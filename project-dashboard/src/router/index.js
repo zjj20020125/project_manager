@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import Home from '../views/Home.vue'
 import HomePage from '../views/HomePage.vue'
 import ProjectDetailView from '../views/ProjectDetailView.vue'
 import TaskDetailView from '../views/TaskDetailView.vue'
@@ -12,12 +13,16 @@ import CompletedMilestoneTaskDetailView from '../views/CompletedMilestoneTaskDet
 import SubTaskDetailView from '../views/SubTaskDetailView.vue'
 import AcceptedTaskDetailView from '../views/AcceptedTaskDetailView.vue'
 import ProjectStatusSubtasksDetailView from '../views/ProjectStatusSubtasksDetailView.vue'
+import NcrFlowChart from '../views/ncr/NcrFlowChart.vue'
+import NcrStageDetail from '../views/ncr/NcrStageDetail.vue'
+import NcrItemDetail from '../views/ncr/NcrItemDetail.vue'
+import NcrHomePage from '../views/ncr/NcrHomePage.vue'
 
 const routes = [
   {
     path: '/',
     name: 'Home',
-    component: HomePage
+    component: Home
   },
   {
     path: '/home',
@@ -89,6 +94,28 @@ const routes = [
     name: 'ProjectStatusSubtasksDetail',
     component: ProjectStatusSubtasksDetailView,
     props: true
+  },
+  {
+    path: '/ncr-flow-chart',
+    name: 'NcrFlowChart',
+    component: NcrFlowChart
+  },
+  {
+    path: '/ncr-stage-detail/:stage?',
+    name: 'NcrStageDetail',
+    component: NcrStageDetail,
+    props: true
+  },
+  {
+    path: '/ncr-item-detail/:processNo',
+    name: 'NcrItemDetail',
+    component: NcrItemDetail,
+    props: true
+  },
+  {
+    path: '/ncr-home',
+    name: 'NcrHomePage',
+    component: NcrHomePage
   }
 ]
 

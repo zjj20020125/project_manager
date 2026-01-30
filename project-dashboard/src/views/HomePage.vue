@@ -4,8 +4,10 @@
     <div style="position: fixed; top: 0; left: 0; right: 0; z-index: 1000; background: linear-gradient(135deg, #409EFF 0%, #4d9eff 100%); padding: 30px; box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);"> 
       <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: center; align-items: center; position: relative;">
         <div style="text-align: center;">
-          <h1 style="margin: 0; font-size: 32px; color: white; font-weight: bold; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);">项目总览</h1>
-          <p style="margin-top: 10px; color: rgba(255, 255, 255, 0.9); font-size: 16px;">结构件事业部项目管理</p>
+          <h1 v-if="currentView !== 'ncr'" style="margin: 0; font-size: 32px; color: white; font-weight: bold; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);">项目总览</h1>
+          <h1 v-else style="margin: 0; font-size: 32px; color: white; font-weight: bold; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);">NCR管理</h1>
+          <p v-if="currentView !== 'ncr'" style="margin-top: 10px; color: rgba(255, 255, 255, 0.9); font-size: 16px;">结构件事业部项目管理</p>
+          <p v-else style="margin-top: 10px; color: rgba(255, 255, 255, 0.9); font-size: 16px;">NCR流程管理</p>
         </div>
         <div style="color: white; font-size: 18px; position: absolute; right: 0;">
           <div>{{ currentTime }}</div>
@@ -15,184 +17,188 @@
 
     <!-- 顶部导航 -->
     <el-header style="background: #fff; border-bottom: 1px solid #eee; padding: 0 20px; flex-shrink: 0; max-width: 1200px; margin: 0 auto; width: 100%;">
-      <el-menu :default-active="activeMenu" mode="horizontal" background-color="#fff" text-color="#333" active-text-color="#409EFF">
+      <el-menu :default-active="activeMenu" mode="horizontal" background-color="#fff" text-color="#333" active-text-color="#409EFF" @select="handleMenuSelect">
         <el-menu-item index="1">项目总览</el-menu-item>
+        <el-menu-item index="2">NCR管理</el-menu-item>
       </el-menu>
     </el-header>
 
     <el-main style="padding: 20px 0; display: flex; justify-content: center;">
       <div style="max-width: 1200px; width: 100%; padding: 0 20px;">
-     <!-- 项目分类统计 -->
-           <el-card shadow="hover" margin-bottom="20px" style="margin-top: 20px;">
-             <div slot="header" class="card-header">项目分类统计</div>
-             <el-row :gutter="20">
-               <el-col :span="6">
-                 <el-card shadow="hover" @click="goToProjectDetail('total')" class="clickable-card">
-                   <div class="card-title">项目总数</div>
-                   <div class="card-value" style="color: #f56c6c;">{{ projectCategoryStats.total_projects || 0 }}个</div>
-                 </el-card>
-               </el-col>
-               <el-col :span="6">
-                 <el-card shadow="hover" @click="goToProjectDetail('not_started')" class="clickable-card">
-                   <div class="card-title">未开始项目</div>
-                   <div class="card-value" style="color: #E6A23C;">{{ projectCategoryStats.not_started_projects || 0 }}个</div>
-                 </el-card>
-               </el-col>
-               <el-col :span="6">
-                 <el-card shadow="hover" @click="goToProjectDetail('ongoing')" class="clickable-card">
-                   <div class="card-title">进行中项目</div>
-                   <div class="card-value" style="color: #409EFF;">{{ projectCategoryStats.ongoing_projects || 0 }}个</div>
-                 </el-card>
-               </el-col>
-               <el-col :span="6">
-                 <el-card shadow="hover" @click="goToProjectDetail('completed')" class="clickable-card">
-                   <div class="card-title">已结项项目</div>
-                   <div class="card-value" style="color: #67C23A;">{{ projectCategoryStats.completed_projects || 0 }}个</div>
-                 </el-card>
-               </el-col>
-             </el-row>
-           </el-card>
-
-      <!-- 图表区域 -->
-      <el-row :gutter="20" margin-bottom="20px">
-        <!-- 项目状态分布（扇形图） -->
-        <el-col :span="8">
-          <el-card shadow="hover" class="clickable-card">
-            <div slot="header" class="card-header">项目状态分布</div>
-            <div ref="typePieRef" class="chart-container"></div>
+        <!-- 条件渲染：显示NCR管理界面或项目总览界面 -->
+        <div v-if="currentView === 'ncr'">
+          <el-card shadow="hover" margin-bottom="20px" style="margin-top: 20px;">
+            <NcrFlowChart />
           </el-card>
-        </el-col>
+        </div>
+        <div v-else>
+          <!-- 项目分类统计 -->
+          <el-card shadow="hover" margin-bottom="20px" style="margin-top: 20px;">
+            <div slot="header" class="card-header">项目分类统计</div>
+            <el-row :gutter="20">
+              <el-col :span="6">
+                <el-card shadow="hover" @click="goToProjectDetail('total')" class="clickable-card">
+                  <div class="card-title">项目总数</div>
+                  <div class="card-value" style="color: #f56c6c;">{{ projectCategoryStats.total_projects || 0 }}个</div>
+                </el-card>
+              </el-col>
+              <el-col :span="6">
+                <el-card shadow="hover" @click="goToProjectDetail('not_started')" class="clickable-card">
+                  <div class="card-title">未开始项目</div>
+                  <div class="card-value" style="color: #E6A23C;">{{ projectCategoryStats.not_started_projects || 0 }}个</div>
+                </el-card>
+              </el-col>
+              <el-col :span="6">
+                <el-card shadow="hover" @click="goToProjectDetail('ongoing')" class="clickable-card">
+                  <div class="card-title">进行中项目</div>
+                  <div class="card-value" style="color: #409EFF;">{{ projectCategoryStats.ongoing_projects || 0 }}个</div>
+                </el-card>
+              </el-col>
+              <el-col :span="6">
+                <el-card shadow="hover" @click="goToProjectDetail('completed')" class="clickable-card">
+                  <div class="card-title">已结项项目</div>
+                  <div class="card-value" style="color: #67C23A;">{{ projectCategoryStats.completed_projects || 0 }}个</div>
+                </el-card>
+              </el-col>
+            </el-row>
+          </el-card>
 
-        <!-- 任务负责人统计（表格形式） -->
-        <el-col :span="8">
+          <!-- 图表区域 -->
+          <el-row :gutter="20" margin-bottom="20px">
+            <!-- 项目状态分布（扇形图） -->
+            <el-col :span="8">
+              <el-card shadow="hover" class="clickable-card">
+                <div slot="header" class="card-header">项目状态分布</div>
+                <div ref="typePieRef" class="chart-container"></div>
+              </el-card>
+            </el-col>
+
+            <!-- 任务负责人统计（表格形式） -->
+            <el-col :span="8">
+              <el-card shadow="hover">
+                <div slot="header" class="card-header">任务负责人统计</div>
+                <el-table 
+                  :data="taskOwnerStats" 
+                  border 
+                  style="width: 100%" 
+                  height="260"
+                  :fit="true"
+                  v-loading="ownerStatsLoading"
+                >
+                  <el-table-column prop="owner_name" label="负责人姓名" align="center" header-align="center">
+                    <template #default="scope">
+                      <span 
+                        @click="goToOwnerTaskDetail(scope.row.owner_name)"
+                        style="color: #409EFF; cursor: pointer; text-decoration: underline; display: block; width: 100%;"
+                      >
+                        {{ scope.row.owner_name }}
+                      </span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="task_count" label="负责任务数" align="center" header-align="center">
+                    <template #default="scope">
+                      <el-tag type="success" style="text-align: center">{{ scope.row.task_count }} 项</el-tag>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </el-card>
+            </el-col>
+
+            <!-- 项目经理负载（横向柱状图） -->
+            <el-col :span="8">
+              <el-card shadow="hover" class="clickable-card">
+                <div slot="header" class="card-header">项目经理负载</div>
+                <div ref="loadBarRef" class="chart-container"></div>
+              </el-card>
+            </el-col>
+          </el-row>
+
+          <!-- 任务进度统计 -->
+          <el-row :gutter="20" margin-bottom="20px">
+            <el-col :span="6">
+              <el-card shadow="hover" @click="goToMilestoneTaskDetail" class="clickable-card" style="background: linear-gradient(135deg, #74b9ff, #0984e3); color: white;">
+                <div class="card-title" style="color: white;">里程碑任务数</div>
+                <div class="card-value" style="color: white;">{{ taskStats.milestoneTasks }}个</div>
+              </el-card>
+            </el-col>
+            <el-col :span="6">
+              <el-card shadow="hover" @click="goToCompletedMilestoneTaskDetail" class="clickable-card" style="background: linear-gradient(135deg, #00b894, #00a085); color: white;">
+                <div class="card-title" style="color: white;">已验收里程碑任务数</div>
+                <div class="card-value" style="color: white;">{{ taskStats.completedMilestones }}个</div>
+              </el-card>
+            </el-col>
+            <el-col :span="6">
+              <el-card shadow="hover" @click="goToSubTaskDetail" class="clickable-card" style="background: linear-gradient(135deg, #fdcb6e, #e17055); color: white;">
+                <div class="card-title" style="color: white;">子任务任务数</div>
+                <div class="card-value" style="color: white;">{{ taskStats.subTasks }}个</div>
+              </el-card>
+            </el-col>
+            <el-col :span="6">
+              <el-card shadow="hover" @click="goToAcceptedTaskDetail" class="clickable-card" style="background: linear-gradient(135deg, #6c5ce7, #a29bfe); color: white;">
+                <div class="card-title" style="color: white;">已验收任务数</div>
+                <div class="card-value" style="color: white;">{{ taskStats.completedTasks }}个</div>
+              </el-card>
+            </el-col>
+          </el-row>
+
+          <!-- 项目任务甘特图 -->
+          <el-card shadow="hover" margin-bottom="20px">
+            <div slot="header" class="card-header">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span>{{ selectedProjectName || '项目任务甘特图' }}</span>
+                <el-select v-model="selectedProjectId" placeholder="请选择项目" style="width: 200px;" @change="updateGanttChart">
+                  <el-option
+                    v-for="item in projectOptions"
+                    :key="item.project_id"
+                    :label="item.project_name"
+                    :value="item.project_id"
+                  >
+                  </el-option>
+                </el-select>
+              </div>
+            </div>
+            <div ref="ganttRef" class="gantt-container"></div>
+            <button @click="debugGanttData" style="margin-top: 10px;">调试甘特图数据</button>
+          </el-card>
+
+          <!-- 任务进度明细表 -->
           <el-card shadow="hover">
-            <div slot="header" class="card-header">任务负责人统计</div>
-            <el-table 
-              :data="taskOwnerStats" 
-              border 
-              style="width: 100%" 
-              height="260"
-              :fit="true"
-              v-loading="ownerStatsLoading"
-            >
-              <el-table-column prop="owner_name" label="负责人姓名" align="center" header-align="center">
+            <div slot="header" class="card-header">项目进度明细表</div>
+            <el-table :data="projectDetails" border style="width: 100%" v-loading="projectDetailsLoading" header-align="center">
+              <el-table-column prop="project_id" label="项目编号" width="100" align="center" header-align="center" />
+              <el-table-column 
+                prop="project_name" 
+                label="项目名称" 
+                min-width="200"
+                align="center"
+                header-align="center"
+              >
                 <template #default="scope">
                   <span 
-                    @click="goToOwnerTaskDetail(scope.row.owner_name)"
-                    style="color: #409EFF; cursor: pointer; text-decoration: underline; display: block; width: 100%;"
+                    @click="goToProjectSubtasks(scope.row.project_id, scope.row.project_name)"
+                    style="color: #409EFF; cursor: pointer; text-decoration: underline;"
                   >
-                    {{ scope.row.owner_name }}
+                    {{ scope.row.project_name }}
                   </span>
                 </template>
               </el-table-column>
-              <el-table-column prop="task_count" label="负责任务数" align="center" header-align="center">
+              <el-table-column prop="project_manager" label="项目经理" width="120" align="center" header-align="center" />
+              <el-table-column prop="planned_start_date" label="计划开始时间" width="150" align="center" header-align="center" />
+              <el-table-column prop="planned_end_date" label="计划结束时间" width="150" align="center" header-align="center" />
+              <el-table-column prop="actual_start_date" label="实际开始时间" width="150" align="center" header-align="center" />
+              <el-table-column prop="actual_end_date" label="实际结束时间" width="150" align="center" header-align="center" />
+              <el-table-column prop="project_status" label="项目状态" width="120" align="center" header-align="center" />
+              <el-table-column prop="category" label="项目分类" width="120" align="center" header-align="center">
                 <template #default="scope">
-                  <el-tag type="success" style="text-align: center">{{ scope.row.task_count }} 项</el-tag>
+                  <el-tag :type="getCategoryTagType(scope.row.category)">
+                    {{ scope.row.category }}
+                  </el-tag>
                 </template>
               </el-table-column>
+              <el-table-column prop="created_at" label="创建时间" width="180" align="center" header-align="center" />
             </el-table>
           </el-card>
-        </el-col>
-
-        <!-- 项目经理负载（横向柱状图） -->
-        <el-col :span="8">
-          <el-card shadow="hover" class="clickable-card">
-            <div slot="header" class="card-header">项目经理负载</div>
-            <div ref="loadBarRef" class="chart-container"></div>
-          </el-card>
-        </el-col>
-      </el-row>
-
-      <!-- 任务进度统计 -->
-      <el-row :gutter="20" margin-bottom="20px">
-        <el-col :span="6">
-          <el-card shadow="hover" @click="goToMilestoneTaskDetail" class="clickable-card" style="background: linear-gradient(135deg, #74b9ff, #0984e3); color: white;">
-            <div class="card-title" style="color: white;">里程碑任务数</div>
-            <div class="card-value" style="color: white;">{{ taskStats.milestoneTasks }}个</div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card shadow="hover" @click="goToCompletedMilestoneTaskDetail" class="clickable-card" style="background: linear-gradient(135deg, #00b894, #00a085); color: white;">
-            <div class="card-title" style="color: white;">已验收里程碑任务数</div>
-            <div class="card-value" style="color: white;">{{ taskStats.completedMilestones }}个</div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card shadow="hover" @click="goToSubTaskDetail" class="clickable-card" style="background: linear-gradient(135deg, #fdcb6e, #e17055); color: white;">
-            <div class="card-title" style="color: white;">子任务任务数</div>
-            <div class="card-value" style="color: white;">{{ taskStats.subTasks }}个</div>
-          </el-card>
-        </el-col>
-        <el-col :span="6">
-          <el-card shadow="hover" @click="goToAcceptedTaskDetail" class="clickable-card" style="background: linear-gradient(135deg, #6c5ce7, #a29bfe); color: white;">
-            <div class="card-title" style="color: white;">已验收任务数</div>
-            <div class="card-value" style="color: white;">{{ taskStats.completedTasks }}个</div>
-          </el-card>
-        </el-col>
-      </el-row>
-
-          <!-- 项目任务甘特图 -->
-      <el-card shadow="hover" margin-bottom="20px">
-        <div slot="header" class="card-header">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span>{{ selectedProjectName || '项目任务甘特图' }}</span>
-            <el-select v-model="selectedProjectId" placeholder="请选择项目" style="width: 200px;" @change="updateGanttChart">
-              <el-option
-                v-for="item in projectOptions"
-                :key="item.project_id"
-                :label="item.project_name"
-                :value="item.project_id"
-              >
-              </el-option>
-            </el-select>
-          </div>
         </div>
-        <div ref="ganttRef" class="gantt-container"></div>
-        <button @click="debugGanttData" style="margin-top: 10px;">调试甘特图数据</button>
-      </el-card>
-
-      <!-- 任务进度明细表 -->
-      <el-card shadow="hover">
-        <div slot="header" class="card-header">项目进度明细表</div>
-        <el-table :data="projectDetails" border style="width: 100%" v-loading="projectDetailsLoading" header-align="center">
-          <el-table-column prop="project_id" label="项目编号" width="100" align="center" header-align="center" />
-          <el-table-column 
-            prop="project_name" 
-            label="项目名称" 
-            min-width="200"
-            align="center"
-            header-align="center"
-          >
-            <template #default="scope">
-              <span 
-                @click="goToProjectSubtasks(scope.row.project_id, scope.row.project_name)"
-                style="color: #409EFF; cursor: pointer; text-decoration: underline;"
-              >
-                {{ scope.row.project_name }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="project_manager" label="项目经理" width="120" align="center" header-align="center" />
-          <el-table-column prop="planned_start_date" label="计划开始时间" width="150" align="center" header-align="center" />
-          <el-table-column prop="planned_end_date" label="计划结束时间" width="150" align="center" header-align="center" />
-          <el-table-column prop="actual_start_date" label="实际开始时间" width="150" align="center" header-align="center" />
-          <el-table-column prop="actual_end_date" label="实际结束时间" width="150" align="center" header-align="center" />
-          <el-table-column prop="project_status" label="项目状态" width="120" align="center" header-align="center" />
-          <el-table-column prop="category" label="项目分类" width="120" align="center" header-align="center">
-            <template #default="scope">
-              <el-tag :type="getCategoryTagType(scope.row.category)">
-                {{ scope.row.category }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="created_at" label="创建时间" width="180" align="center" header-align="center" />
-        </el-table>
-      </el-card>
-
-
-
-      <!-- 项目详细分类列表 -->
-
       </div>
     </el-main>
   </el-container>
@@ -204,9 +210,13 @@ import * as echarts from 'echarts'
 import { ElContainer, ElHeader, ElMain, ElRow, ElCol, ElCard, ElMenu, ElMenuItem, ElTable, ElTableColumn, ElTag, ElProgress, ElMessage, vLoading } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { projectApi } from '../api/index.js'  // 导入API
+import NcrFlowChart from './ncr/NcrFlowChart.vue'
 import 'element-plus/dist/index.css'
 
 const router = useRouter()
+
+// 当前显示的视图 ('project' 或 'ncr')
+const currentView = ref('project')
 
 // 当前时间状态
 const currentTime = ref('')
@@ -485,6 +495,40 @@ const goToAcceptedTaskDetail = () => {
   router.push({ name: 'AcceptedTaskDetail' })
 }
 
+// 切换到NCR管理页面
+const goToNcr = () => {
+  currentView.value = 'ncr';
+  activeMenu.value = '2';
+}
+
+// 导航到NCR流程图
+const goToNcrFlowChart = () => {
+  window.location.reload();
+}
+
+// 重新初始化图表
+const reInitCharts = () => {
+  setTimeout(() => {
+    initTypePie();
+    initSourceBar();
+    initLoadBar();
+    initGantt();
+  }, 100);
+}
+
+// 处理菜单选择
+const handleMenuSelect = (index) => {
+  if (index === '2') {
+    currentView.value = 'ncr';
+    activeMenu.value = '2';
+  } else {
+    currentView.value = 'project';
+    activeMenu.value = '1';
+    // 重新初始化图表以确保它们正确显示
+    reInitCharts();
+  }
+}
+
 // 获取状态文本
 const getStatusText = (status) => {
   switch (status) {
@@ -555,13 +599,13 @@ onMounted(async () => {
       initTaskOwnerStats()  // 添加任务负责人统计初始化
     ]);
     
-    // 初始化各图表
-    await Promise.all([
-      initTypePie(),
-      initSourceBar(),
-      initLoadBar(),
-      initGantt()
-    ]);
+    // 使用setTimeout确保DOM完全渲染后再初始化图表
+    setTimeout(() => {
+      initTypePie();
+      initSourceBar();
+      initLoadBar();
+      initGantt();
+    }, 100);
   } catch (error) {
     console.error('初始化页面数据失败:', error);
     ElMessage.error('页面初始化失败，请刷新重试');

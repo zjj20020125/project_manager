@@ -1,16 +1,16 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-// https://vitejs.dev/config/
+// NCR管理界面专用配置
 export default defineConfig({
   plugins: [vue()],
   server: {
-    host: '0.0.0.0',
-    port: 3000,
-    open: true,
+    host: '172.16.33.192',
+    port: 3001,  // NCR管理界面使用端口3001
+    open: false,
     proxy: {
       '/api': {
-        target: 'http://172.16.33.192:8001', // 后端API地址 - 修改为局域网IP
+        target: 'http://172.16.33.192:8002', // NCR后端API地址
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '')
       }

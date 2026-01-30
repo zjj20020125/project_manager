@@ -1,0 +1,875 @@
+<template>
+  <div class="ncr-flow-chart-container">
+    <!-- 第一个容器：两个扇形图 -->
+    <el-row :gutter="20" margin-bottom="20px">
+      <el-col :span="12">
+        <el-card shadow="hover" class="clickable-card" @click="goToStageDetail">
+          <div slot="header" class="card-header">NCR发生阶段分布</div>
+          <div ref="stagePieRef" class="chart-container"></div>
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <el-card shadow="hover" class="clickable-card" @click="goToTypeDetail">
+          <div slot="header" class="card-header">评审阶段责任人员分布（前五名）</div>
+          <div ref="typePieRef" class="chart-container"></div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- 第二个容器：柱状图和未操作者统计 -->
+    <el-row :gutter="20" margin-bottom="20px">
+      <el-col :span="12">
+        <el-card shadow="hover" class="clickable-card">
+          <div slot="header" class="card-header">NCR趋势统计</div>
+          <div ref="trendBarRef" class="chart-container"></div>
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <el-card shadow="hover" class="list-card">
+          <div slot="header" class="card-header">
+            <span>未操作者及其未处理数量统计</span>
+          </div>
+          <div class="scroll-list-container">
+            <div class="scroll-list-content" :class="{ 'auto-scroll': wczzListData.length > 6 }" ref="wczzListRef">
+              <div class="list-item" v-for="(item, index) in wczzListData" :key="index">
+                <span class="name">{{ item.name }}</span>
+                <span class="count">数量: {{ item.value }}</span>
+              </div>
+              <!-- 重复列表内容以实现无缝滚动 -->
+              <div class="list-item" v-for="(item, index) in wczzListData" :key="`duplicate-${index}`">
+                <span class="name">{{ item.name }}</span>
+                <span class="count">数量: {{ item.value }}</span>
+              </div>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- 新增：未处理类型分布统计模块 -->
+    <el-row :gutter="20" style="margin-bottom: 20px;">
+      <el-col :span="12">
+        <el-card shadow="hover" class="chart-card">
+          <div slot="header" class="card-header">
+            <span>未处理类型分布统计</span>
+          </div>
+          <div ref="dqjdChartRef" class="chart-container"></div>
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <el-card shadow="hover">
+          <div slot="header" class="card-header">NCR负责人统计</div>
+          <el-table 
+            :data="ncrOwnerStats" 
+            border 
+            style="width: 100%" 
+            height="260"
+            :fit="true"
+            v-loading="ownerStatsLoading"
+          >
+            <el-table-column prop="owner_name" label="负责人姓名" align="center" header-align="center">
+              <template #default="scope">
+                <span 
+                  style="color: #409EFF; cursor: pointer; text-decoration: underline; display: block; width: 100%;"
+                >
+                  {{ scope.row.owner_name }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="ncr_count" label="NCR数量" align="center" header-align="center">
+              <template #default="scope">
+                <el-tag type="danger" style="text-align: center">{{ scope.row.ncr_count }} 项</el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- 新增：责任分析模块 -->
+    <el-row :gutter="20" style="margin-bottom: 20px;">
+      <el-col :span="24">
+        <el-card shadow="hover">
+          <div slot="header" class="card-header">评审阶段责任人员分布（前五名）</div>
+          <div ref="responsibilityChartRef" class="chart-container"></div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- 第三个容器：详细情况展示框 -->
+    <el-card shadow="hover">
+      <div slot="header" class="card-header">NCR详细情况展示</div>
+      <div class="ncr-details-container">
+        <el-table :data="ncrDetails" border style="width: 100%" v-loading="ncrDetailsLoading" header-align="center">
+          <el-table-column prop="process_no" label="NCR编号" width="100" align="center" header-align="center" />
+          <el-table-column 
+            prop="defective_product_name" 
+            label="缺陷产品名称" 
+            min-width="150"
+            align="center"
+            header-align="center"
+          >
+            <template #default="scope">
+              <span 
+                style="color: #409EFF; cursor: pointer; text-decoration: underline;"
+                @click="goToNcrDetail(scope.row.process_no)"
+              >
+                {{ scope.row.defective_product_name }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="product_no" label="产品编号" width="100" align="center" header-align="center" />
+          <el-table-column prop="creator" label="创建人" width="100" align="center" header-align="center" />
+          <el-table-column prop="create_date" label="创建日期" width="120" align="center" header-align="center" />
+          <el-table-column prop="occurrence_date" label="发生日期" width="120" align="center" header-align="center" />
+          <el-table-column prop="fsjd" label="发生阶段" width="100" align="center" header-align="center" />
+          <el-table-column prop="quantity" label="数量" width="80" align="center" header-align="center" />
+          <el-table-column prop="problem_category" label="问题分类" width="120" align="center" header-align="center" />
+          <el-table-column prop="problem_description" label="问题描述" min-width="150" show-overflow-tooltip align="center" header-align="center" />
+          <el-table-column prop="status" label="状态" width="100" align="center" header-align="center" />
+          <el-table-column prop="review_level" label="评审级别" width="100" align="center" header-align="center">
+            <template #default="scope">
+              <el-tag :type="getPriorityTagType(scope.row.review_level)">
+                {{ scope.row.review_level }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="update_time" label="更新时间" width="120" align="center" header-align="center" />
+        </el-table>
+      </div>
+    </el-card>
+  </div>
+</template>
+
+<script>
+import { ref, onMounted, onUnmounted, reactive, onActivated } from 'vue';
+import * as echarts from 'echarts';
+import { ElCard, ElRow, ElCol, ElTable, ElTableColumn, ElTag, vLoading } from 'element-plus';
+import { projectApi } from '../../api/index.js';
+import { useRouter } from 'vue-router';
+
+export default {
+  name: 'NcrFlowChart',
+  components: {
+    ElCard,
+    ElRow,
+    ElCol,
+    ElTable,
+    ElTableColumn,
+    ElTag
+  },
+  setup() {
+    const router = useRouter();
+    
+    // ECharts实例引用
+    const stagePieRef = ref(null);  // 新增：阶段分布饼图引用
+    const typePieRef = ref(null);
+    const trendBarRef = ref(null);
+    // 新增：DQJD图表和WCZZ列表引用
+    const dqjdChartRef = ref(null);
+    const wczzListRef = ref(null);
+    // 新增：责任分析图表引用
+    const responsibilityChartRef = ref(null);
+
+    // 数据状态
+    const ncrOwnerStats = ref([]);
+    const ownerStatsLoading = ref(false);
+    
+    const ncrDetails = ref([]);
+    const ncrDetailsLoading = ref(false);
+
+    // 新增：DQJD和WCZZ数据
+    const dqjdData = ref([]);
+    const wczzListData = ref([]);
+    // 新增：责任分析数据
+    const responsibilityData = ref([]);
+
+    // 图表实例对象
+    let stagePieChart = null;  // 新增：阶段分布饼图实例
+    let typePieChart = null;
+    let trendBarChart = null;
+    // 新增：DQJD和WCZZ图表实例
+    let dqjdChart = null;
+    let wczzChart = null;
+    // 新增：责任分析图表实例
+    let responsibilityChart = null;
+
+    // 初始化NCR发生阶段分布饼图
+    const initStagePie = (data) => {
+      if (!stagePieRef.value) return;
+
+      // 确保之前的图表实例已被销毁
+      if (stagePieChart) {
+        try {
+          stagePieChart.dispose();
+        } catch (e) {
+          console.warn('Error disposing stagePieChart:', e);
+        }
+        stagePieChart = null;
+      }
+
+      stagePieChart = echarts.init(stagePieRef.value);
+
+      const option = {
+        tooltip: { 
+          trigger: 'item',
+          formatter: (params) => {
+            return `${params.name}: ${params.value} (${((params.percent || 0) / 100).toFixed(2) * 100}%)`;
+          }
+        },
+        grid: { left: '3%', right: '4%', bottom: '15%', top: '10%' },
+        legend: {
+          bottom: 10,
+          left: 'center',
+          itemWidth: 12,
+          itemHeight: 12
+        },
+        series: [
+          {
+            name: 'NCR发生阶段',
+            type: 'pie',
+            radius: ['40%', '70%'],
+            center: ['50%', '40%'],
+            data: data.map(item => ({
+              name: item.name,
+              value: item.value,
+              itemStyle: { 
+                color: getColorForStage(item.name) 
+              }
+            })),
+            label: { show: false },
+            labelLine: { show: false },
+            emphasis: {
+              itemStyle: {
+                shadowBlur: 10,
+                shadowOffsetX: 0,
+                shadowColor: 'rgba(0, 0, 0, 0.5)'
+              }
+            },
+            // 添加点击事件
+            selectedMode: 'single',
+            selectedOffset: 10
+          }
+        ]
+      };
+      
+      stagePieChart.setOption(option);
+      
+      // 添加点击事件监听
+      stagePieChart.on('click', (params) => {
+        if (params && params.name) {
+          router.push({
+            name: 'NcrStageDetail',
+            params: { stage: params.name }
+          });
+        }
+      });
+    };
+
+    // 初始化评审阶段责任人员分布饼图
+    const initTypePie = (data) => {
+      if (!typePieRef.value) return;
+
+      // 确保之前的图表实例已被销毁
+      if (typePieChart) {
+        try {
+          typePieChart.dispose();
+        } catch (e) {
+          console.warn('Error disposing typePieChart:', e);
+        }
+        typePieChart = null;
+      }
+
+      typePieChart = echarts.init(typePieRef.value);
+
+      // 定义一组对比明显的颜色，确保相邻数据颜色不会太相近
+      const pieColors = [
+        '#FF6B6B', // 红色
+        '#4ECDC4', // 青绿色
+        '#45B7D1', // 蓝色
+        '#96CEB4', // 绿色
+        '#FFEAA7', // 黄色
+        '#DDA0DD', // 梅花色
+        '#98D8C8', // 薄荷绿
+        '#F7DC6F', // 浅黄色
+        '#BB8FCE', // 浅紫色
+        '#85C1E9'  // 浅蓝色
+      ];
+
+      const option = {
+        tooltip: { 
+          trigger: 'item',
+          formatter: (params) => {
+            return `${params.name}: ${params.value} (${((params.percent || 0) / 100).toFixed(2) * 100}%)`;
+          }
+        },
+        grid: { left: '3%', right: '4%', bottom: '15%', top: '10%' },
+        legend: {
+          bottom: 10,
+          left: 'center',
+          itemWidth: 12,
+          itemHeight: 12
+        },
+        series: [
+          {
+            name: '评审阶段责任人员',
+            type: 'pie',
+            radius: ['40%', '70%'],
+            center: ['50%', '40%'],
+            data: data.map((item, index) => ({
+              name: item.name,
+              value: item.value,
+              itemStyle: { 
+                color: pieColors[index % pieColors.length] // 循环使用预定义颜色
+              }
+            })),
+            label: { show: false },
+            labelLine: { show: false },
+            emphasis: {
+              itemStyle: {
+                shadowBlur: 10,
+                shadowOffsetX: 0,
+                shadowColor: 'rgba(0, 0, 0, 0.5)'
+              }
+            },
+            // 添加点击事件
+            selectedMode: 'single',
+            selectedOffset: 10
+          }
+        ]
+      };
+      typePieChart.setOption(option);
+      
+      // 添加点击事件监听
+      typePieChart.on('click', (params) => {
+        if (params && params.name) {
+          router.push({
+            name: 'NcrTypeDetail',
+            params: { type: params.name }
+          });
+        }
+      });
+    };
+
+    // 初始化NCR趋势柱状图
+    const initTrendBar = (data) => {
+      if (!trendBarRef.value) return;
+
+      // 确保之前的图表实例已被销毁
+      if (trendBarChart) {
+        try {
+          trendBarChart.dispose();
+        } catch (e) {
+          console.warn('Error disposing trendBarChart:', e);
+        }
+        trendBarChart = null;
+      }
+
+      trendBarChart = echarts.init(trendBarRef.value);
+
+      const option = {
+        tooltip: { trigger: 'axis' },
+        grid: { left: '3%', right: '4%', bottom: '15%', top: '10%' },
+        xAxis: {
+          type: 'category',
+          data: data.labels || ['1月', '2月', '3月', '4月', '5月', '6月']
+        },
+        yAxis: {
+          type: 'value'
+        },
+        series: [{
+          data: data.values || [12, 18, 15, 20, 25, 18],
+          type: 'bar',
+          itemStyle: { color: '#74b9ff' }
+        }]
+      };
+      trendBarChart.setOption(option);
+    };
+
+    // 新增：初始化DQJD分布饼图
+    const initDqjdChart = (data) => {
+      if (!dqjdChartRef.value) return;
+
+      if (dqjdChart) {
+        dqjdChart.dispose();
+      }
+
+      dqjdChart = echarts.init(dqjdChartRef.value);
+
+      // 定义一组对比明显的颜色，确保相邻数据颜色不会太相近
+      const pieColors = [
+        '#FF6B6B', // 红色
+        '#4ECDC4', // 青绿色
+        '#45B7D1', // 蓝色
+        '#96CEB4', // 绿色
+        '#FFEAA7', // 黄色
+        '#DDA0DD', // 梅花色
+        '#98D8C8', // 薄荷绿
+        '#F7DC6F', // 浅黄色
+        '#BB8FCE', // 浅紫色
+        '#85C1E9'  // 浅蓝色
+      ];
+
+      const option = {
+        tooltip: {
+          trigger: 'item',
+          formatter: '{a} <br/>{b}: {c} ({d}%)'
+        },
+        legend: {
+          orient: 'horizontal',
+          left: 'center',
+          bottom: 0,
+          itemGap: 5
+        },
+        series: [{
+          name: 'DQJD阶段分布',
+          type: 'pie',
+          radius: ['40%', '60%'],
+          center: ['50%', '40%'],
+          avoidLabelOverlap: false,
+          itemStyle: {
+            borderRadius: 10,
+            borderColor: '#fff',
+            borderWidth: 2,
+            color: function(params) {
+              // 循环使用预定义颜色
+              return pieColors[params.dataIndex % pieColors.length];
+            }
+          },
+          label: {
+            show: true,
+            formatter: '{b}: {c}',
+            minMargin: 5
+          },
+          emphasis: {
+            label: {
+              show: true,
+              fontSize: '16',
+              fontWeight: 'bold'
+            }
+          },
+          data: data
+        }]
+      };
+
+      dqjdChart.setOption(option);
+    };
+
+    // 新增：处理WCZZ数据并填充列表
+    const updateWczzList = (data) => {
+      // 按数量降序排序
+      const sortedData = [...data].sort((a, b) => b.value - a.value);
+      wczzListData.value = sortedData;
+    };
+
+    // 新增：初始化责任分析饼图
+    const initResponsibilityChart = (data) => {
+      if (!responsibilityChartRef.value) return;
+
+      if (responsibilityChart) {
+        responsibilityChart.dispose();
+      }
+
+      responsibilityChart = echarts.init(responsibilityChartRef.value);
+
+      // 定义一组对比明显的颜色，确保相邻数据颜色不会太相近
+      const pieColors = [
+        '#FF6B6B', // 红色
+        '#4ECDC4', // 青绿色
+        '#45B7D1', // 蓝色
+        '#96CEB4', // 绿色
+        '#FFEAA7', // 黄色
+        '#DDA0DD', // 梅花色
+        '#98D8C8', // 薄荷绿
+        '#F7DC6F', // 浅黄色
+        '#BB8FCE', // 浅紫色
+        '#85C1E9'  // 浅蓝色
+      ];
+
+      const option = {
+        tooltip: {
+          trigger: 'item',
+          formatter: '{a} <br/>{b}: {c} ({d}%)'
+        },
+        legend: {
+          orient: 'horizontal',
+          left: 'center',
+          bottom: 0,
+          itemGap: 5
+        },
+        series: [{
+          name: '责任人员分布',
+          type: 'pie',
+          radius: ['40%', '60%'],
+          center: ['50%', '40%'],
+          avoidLabelOverlap: false,
+          itemStyle: {
+            borderRadius: 10,
+            borderColor: '#fff',
+            borderWidth: 2,
+            color: function(params) {
+              // 循环使用预定义颜色
+              return pieColors[params.dataIndex % pieColors.length];
+            }
+          },
+          label: {
+            show: true,
+            formatter: '{b}: {c}',
+            minMargin: 5
+          },
+          emphasis: {
+            label: {
+              show: true,
+              fontSize: '16',
+              fontWeight: 'bold'
+            }
+          },
+          data: data
+        }]
+      };
+
+      responsibilityChart.setOption(option);
+    };
+
+    // 根据阶段获取颜色
+    const getColorForStage = (stage) => {
+      const colors = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'];
+      return colors[Math.abs(hashCode(stage)) % colors.length];
+    };
+
+    // 根据状态获取颜色
+    const getColorForStatus = (status) => {
+      switch(status) {
+        case '待处理':
+          return '#e6a23c'; // 橙色
+        case '处理中':
+          return '#409eff'; // 蓝色
+        case '待审核':
+          return '#f56c6c'; // 红色
+        case '已完成':
+          return '#67c23a'; // 绿色
+        default:
+          return '#909399'; // 灰色
+      }
+    };
+
+    // 根据类型获取颜色
+    const getColorForType = (type) => {
+      const colors = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc'];
+      return colors[Math.abs(hashCode(type)) % colors.length];
+    };
+
+    // 简单的哈希函数
+    const hashCode = (str) => {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit integer
+      }
+      return Math.abs(hash);
+    };
+
+    // 获取优先级标签类型
+    const getPriorityTagType = (priority) => {
+      if (!priority) return 'info';
+      
+      switch (priority.toLowerCase()) {
+        case '高':
+        case '一级':
+          return 'danger';
+        case '中':
+        case '二级':
+          return 'warning';
+        case '低':
+          return 'success';
+        default:
+          return 'info';
+      }
+    };
+
+    // 获取NCR统计数据
+    const fetchNcrData = async () => {
+      try {
+        // 获取NCR发生阶段分布
+        const stageDistribution = await projectApi.getNcrStageDistribution();
+        if (stageDistribution) {
+          initStagePie(stageDistribution);
+        }
+
+        // 获取评审阶段责任人员分布
+        const responsibilityAnalysis = await projectApi.getResponsibilityAnalysis();
+        if (responsibilityAnalysis) {
+          initTypePie(responsibilityAnalysis);
+        }
+
+        // 获取NCR列表 - 从API获取真实数据
+        ncrDetailsLoading.value = true;
+        try {
+          const ncrListResponse = await projectApi.getNcrList({ page: 1, limit: 20 });
+          if (ncrListResponse && Array.isArray(ncrListResponse)) {
+            ncrDetails.value = ncrListResponse;
+          } else {
+            ncrDetails.value = [];
+          }
+        } catch (error) {
+          console.error('获取NCR列表失败:', error);
+          ncrDetails.value = [];
+        }
+
+        // 获取DQJD和WCZZ数据
+        try {
+          const dqjdWczzResponse = await projectApi.getDqjdWczzData();
+          if (dqjdWczzResponse) {
+            // 初始化DQJD图表
+            const dqjdData = dqjdWczzResponse.dqjdStats || [];
+            initDqjdChart(dqjdData);
+
+            // 初始化WCZZ图表
+            const wczzData = dqjdWczzResponse.wczzStats || [];
+            updateWczzList(wczzData);
+          }
+        } catch (error) {
+          console.error('获取DQJD/WCZZ数据失败:', error);
+        }
+
+        // 注意：责任分析数据已经在上面获取并初始化了，这里不再重复获取
+        // 获取责任分析数据（使用正确的API获取数据）
+        try {
+          const responsibilityResponse = await projectApi.getResponsibilityAnalysis();
+          if (responsibilityResponse) {
+            // 初始化责任分析图表
+            initResponsibilityChart(responsibilityResponse);
+          }
+        } catch (error) {
+          console.error('获取责任分析数据失败:', error);
+        }
+
+        // 模拟负责人统计数据（实际应用中可以从后端获取）
+        ncrOwnerStats.value = [
+          { owner_name: '张三', ncr_count: 12 },
+          { owner_name: '李四', ncr_count: 8 },
+          { owner_name: '王五', ncr_count: 15 },
+          { owner_name: '赵六', ncr_count: 5 },
+          { owner_name: '孙七', ncr_count: 10 }
+        ];
+
+        // 初始化趋势图（使用模拟数据，实际应用中可以使用时间序列数据）
+        const trendData = {
+          labels: ['1月', '2月', '3月', '4月', '5月', '6月'],
+          values: [12, 18, 15, 20, 25, 18]
+        };
+        initTrendBar(trendData);
+
+      } catch (error) {
+        console.error('获取NCR数据失败:', error);
+      } finally {
+        ncrDetailsLoading.value = false;
+      }
+    };
+
+    // 跳转到阶段详情页
+    const goToStageDetail = () => {
+      router.push({ name: 'NcrStageDetail' });
+    };
+
+    // 跳转到类型详情页
+    const goToTypeDetail = () => {
+      router.push({ name: 'NcrTypeDetail' });
+    };
+
+    // 跳转到NCR项目详情页
+    const goToNcrDetail = (processNo) => {
+      router.push({
+        name: 'NcrItemDetail',
+        params: { processNo: processNo }
+      });
+    };
+
+    // 处理窗口大小变化
+    const handleResize = () => {
+      if (stagePieChart) stagePieChart.resize();  // 更新：添加stagePieChart
+      if (typePieChart) typePieChart.resize();
+      if (trendBarChart) trendBarChart.resize();
+      // 新增：处理DQJD图表的resize
+      if (dqjdChart) dqjdChart.resize();
+      // 新增：处理责任分析图表的resize
+      if (responsibilityChart) responsibilityChart.resize();
+    };
+
+    onMounted(() => {
+      // 使用setTimeout确保DOM完全渲染后再初始化图表
+      setTimeout(() => {
+        try {
+          // 获取数据并初始化图表
+          fetchNcrData();
+
+          // 监听窗口大小变化，自适应图表尺寸
+          window.addEventListener('resize', handleResize);
+        } catch (e) {
+          console.error('Error initializing charts:', e);
+        }
+      }, 100);
+    });
+
+    onUnmounted(() => {
+      try {
+        // 确保在组件卸载时销毁所有图表实例
+        if (stagePieChart) {  // 更新：添加stagePieChart销毁
+          stagePieChart.dispose();
+          stagePieChart = null;
+        }
+        if (typePieChart) {
+          typePieChart.dispose();
+          typePieChart = null;
+        }
+        if (trendBarChart) {
+          trendBarChart.dispose();
+          trendBarChart = null;
+        }
+        // 新增：销毁DQJD图表实例
+        if (dqjdChart) {
+          dqjdChart.dispose();
+          dqjdChart = null;
+        }
+        // 新增：销毁责任分析图表实例
+        if (responsibilityChart) {
+          responsibilityChart.dispose();
+          responsibilityChart = null;
+        }
+
+        window.removeEventListener('resize', handleResize);
+      } catch (e) {
+        console.warn('Error cleaning up NCR component:', e);
+      }
+    });
+
+    // 当组件被激活时（例如从其他页面返回），重新获取数据
+    onActivated(() => {
+      fetchNcrData();
+    });
+
+    return {
+      stagePieRef,  // 更新：返回新的ref
+      typePieRef,
+      trendBarRef,
+      // 新增：返回DQJD的ref
+      dqjdChartRef,
+      wczzListData,
+      ncrOwnerStats,
+      ownerStatsLoading,
+      ncrDetails,
+      ncrDetailsLoading,
+      getPriorityTagType,
+      goToStageDetail,
+      goToTypeDetail,
+      goToNcrDetail
+    };
+  }
+};
+</script>
+
+<style scoped>
+.ncr-flow-chart-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.chart-container {
+  width: 100%;
+  height: 260px;
+}
+
+.ncr-details-container {
+  width: 100%;
+}
+
+.clickable-card {
+  cursor: pointer;
+}
+
+.card-header {
+  font-weight: bold;
+  color: #303133;
+}
+
+/* 新增：DQJD/WCZZ模块样式 */
+.module-content {
+  margin: 20px 0;
+}
+
+.chart-card {
+  height: 400px;
+}
+
+.list-card {
+  height: 400px;
+}
+
+.scroll-list-container {
+  height: 260px;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.scroll-list-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* 自动滚动动画 */
+}
+
+.scroll-list-content.auto-scroll {
+  animation: autoScroll 60s linear infinite;
+}
+
+.scroll-list-content.auto-scroll:hover {
+  animation-play-state: paused;
+}
+
+@keyframes autoScroll {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-50%);
+  }
+}
+
+.list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+.list-item:hover {
+  background: #e3f2fd;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.list-item .name {
+  font-weight: 600;
+  color: #1a1a1a;
+  font-size: 14px;
+}
+
+.list-item .count {
+  background: #409eff;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  min-width: 60px;
+  text-align: center;
+}
+</style>

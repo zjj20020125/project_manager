@@ -143,7 +143,45 @@ export const projectApi = {
   getOwnerTasksCount: (owner) => {
     const encodedOwner = encodeURIComponent(owner);
     return apiClient.get(`/owner-tasks-count/${encodedOwner}`);
-  }
+  },
+  
+  // 获取NCR类型分布统计
+  getNcrTypeDistribution: () => apiClient.get('/ncr/type-distribution'),
+  
+  // 获取NCR发生阶段分布统计
+  getNcrStageDistribution: () => apiClient.get('/ncr/stage-distribution'),
+  
+  // 获取评审阶段责任人员分布统计
+  getResponsibilityAnalysis: () => apiClient.get('/ncr/responsibility-analysis'),
+  
+  // 根据阶段获取NCR数据
+  getNcrByStage: (params = {}) => {
+    const { stage = '', status = '', priority = '', page = 1, limit = 20 } = params;
+    const queryParams = new URLSearchParams();
+    if (stage) queryParams.append('stage', stage);
+    if (status) queryParams.append('status', status);
+    if (priority) queryParams.append('priority', priority);
+    queryParams.append('page', page);
+    queryParams.append('limit', limit);
+    
+    return apiClient.get(`/ncr/by-stage?${queryParams.toString()}`);
+  },
+  
+  // 获取NCR详情
+  getNcrDetail: (processNo) => apiClient.get(`/ncr/detail/${processNo}`),
+  
+  // 获取NCR列表
+  getNcrList: (params = {}) => {
+    const { page = 1, limit = 20 } = params;
+    const queryParams = new URLSearchParams();
+    queryParams.append('page', page);
+    queryParams.append('limit', limit);
+    
+    return apiClient.get(`/ncr/list?${queryParams.toString()}`);
+  },
+  
+  // 获取DQJD和WCZZ数据统计
+  getDqjdWczzData: () => apiClient.get('/dqjd-wczz-data')
 };
 
 export default apiClient;
