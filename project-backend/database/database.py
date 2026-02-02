@@ -21,7 +21,7 @@ def get_db_connection():
         print(f"数据库连接错误: {e}")
     return connection
 
-def execute_query(query, params=None, fetch_all=False):
+def execute_query(query, params=None, fetch_all=False, fetch_one=True):
     """执行SQL查询"""
     connection = get_db_connection()
     if not connection:
@@ -39,14 +39,25 @@ def execute_query(query, params=None, fetch_all=False):
             else:
                 result = cursor.fetchone()
             return result
-        else:
+        elif query.strip().upper().startswith(('INSERT', 'UPDATE', 'DELETE')):
             # 对于INSERT, UPDATE, DELETE查询，执行commit
             connection.commit()
-            # 对于非SELECT查询，根据需要返回受影响的行数或其他信息
+            # 对于INSERT查询，如果需要获取LAST_INSERT_ID，则单独处理
+            if query.strip().upper().startswith('INSERT'):
+                lastrowid = cursor.lastrowid
+                return lastrowid
+            else:
+                # 对于UPDATE, DELETE查询，返回受影响的行数
+                return cursor.rowcount
+        else:
+            # 对于其他查询，执行commit并返回结果
+            connection.commit()
             if fetch_all:
                 result = cursor.fetchall()
-            else:
+            elif fetch_one:
                 result = cursor.fetchone()
+            else:
+                result = cursor.fetchall()
             return result
     except Error as e:
         print(f"执行查询错误: {e}")

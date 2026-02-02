@@ -180,6 +180,22 @@ const fetchSubtasksData = async () => {
   loading.value = true
   try {
     console.log('正在获取项目ID:', projectId.value)
+    console.log('正在获取项目名称:', route.query.projectName)
+    
+    // 使用项目标识符获取项目详细信息
+    let projectIdentifier = null;
+    
+    // 优先使用路由参数中的项目ID，如果不存在则使用项目名称
+    if (route.params.projectId) {
+      projectIdentifier = route.params.projectId;
+    } else if (route.query.projectName) {
+      projectIdentifier = decodeURIComponent(route.query.projectName);
+    }
+    
+    if (!projectIdentifier) {
+      console.error('没有提供项目ID或项目名称');
+      return;
+    }
     
     // 获取项目详细信息
     const projectDetailResponse = await projectApi.getProjectsDetail()
@@ -213,77 +229,24 @@ const fetchSubtasksData = async () => {
       }
     }
 
-    // 获取所有任务数据
-    const allTasksResponse = await projectApi.getTaskList({ page: 1, limit: 10000 }) // 增加限制以获取所有任务
-    console.log('所有任务数据:', allTasksResponse)
-    
-    // 尝试多种方式匹配项目和任务
-    let filteredTasks = [];
-    
-    if (projectName.value) {
-      // 方式1: 根据项目名称过滤
-      filteredTasks = allTasksResponse.filter(task => 
-        task.projectName === projectName.value || 
-        task.projectName === decodeURIComponent(projectName.value) || // 处理URL编码
-        (task.projectNo && task.projectNo == projectId.value) ||  // 使用 == 而不是 ===，避免类型问题
-        (task.projectNo && task.projectNo.toString() === projectId.value.toString())
-      );
-      
-      console.log(`根据项目名称或ID找到 ${filteredTasks.length} 个任务`);
-      
-      // 如果以上方式没找到任务，尝试其他可能的字段
-      if (filteredTasks.length === 0) {
-        filteredTasks = allTasksResponse.filter(task => 
-          task.projectName && task.projectName.includes(projectName.value) ||
-          (task.projectNo && task.projectNo.includes(projectId.value.toString())) ||
-          task.projectNo == projectId.value
-        );
-        
-        console.log(`宽松匹配找到 ${filteredTasks.length} 个任务`);
-      }
-    } else if (projectId.value) {
-      // 如果没有项目名称但有项目ID，尝试仅按ID匹配
-      filteredTasks = allTasksResponse.filter(task => 
-        (task.projectNo && task.projectNo == projectId.value) ||
-        (task.projectNo && task.projectNo.toString() === projectId.value.toString())
-      );
-      
-      console.log(`根据项目ID找到 ${filteredTasks.length} 个任务`);
-    }
-    
-    // 如果还是没找到，尝试所有可能的项目相关字段
-    if (filteredTasks.length === 0 && (projectName.value || projectId.value)) {
-      filteredTasks = allTasksResponse.filter(task => {
-        // 检查项目名称的各种可能字段
-        const projectNameMatch = task.projectName === projectName.value || 
-                                (task.projectName && task.projectName.includes(projectName.value)) ||
-                                task.project_name === projectName.value;
-        
-        // 检查项目ID的各种可能字段
-        const projectIdMatch = task.projectNo == projectId.value ||
-                              (task.projectNo && task.projectNo.toString() === projectId.value.toString()) ||
-                              task.project_id == projectId.value;
-        
-        return projectNameMatch || projectIdMatch;
-      });
-      
-      console.log(`深度匹配找到 ${filteredTasks.length} 个任务`);
-    }
+    // 直接使用新API根据项目标识符获取子任务数据
+    const projectSubtasksResponse = await projectApi.getProjectSubtasks(projectIdentifier);
+    console.log('项目子任务数据:', projectSubtasksResponse);
     
     // 标准化字段名，确保所有任务都有统一的字段结构
-    const standardizedTasks = filteredTasks.map(task => {
+    const standardizedTasks = projectSubtasksResponse.map(task => {
       // 从任务对象中提取所有可能的字段名
       return {
         ...task,
-        task_name: task.taskName || task.task_name || task.taskName || task.task_name || task.name || '未知任务',
-        wbs_code: task.wbsNo || task.wbs_code || task.wbsCode || task.wbs_no || '',
-        task_owner: task.owner || task.task_owner || task.taskOwner || task.responsible || '未指定',
-        planned_start_date: task.planStart || task.planned_start_date || task.plan_start || task.plannedStart || '',
-        planned_end_date: task.planEnd || task.planned_end_date || task.plan_end || task.plannedEnd || '',
-        actual_start_date: task.actual_start_date || task.actualStart || task.actual_start || task['actual-start-time'] || '',
-        actual_end_date: task.actual_end_date || task.actualEnd || task.actual_end || task['actual-end-time'] || '',
-        progress: task.progress || task.Progress || task.PROGRESS || '0%',
-        task_status: task.status || task.task_status || task.taskStatus || task.Status || '未开始'
+        task_name: task.task_name || task.taskName || task.task_name || task.name || '未知任务',
+        wbs_code: task.wbs_code || task.wbsNo || task.wbs_code || task.wbsCode || task.wbs_no || '',
+        task_owner: task.task_owner || task.owner || task.task_owner || task.taskOwner || task.responsible || '未指定',
+        planned_start_date: task.planned_start_date || task.planStart || task.planned_start_date || task.plan_start || task.plannedStart || '',
+        planned_end_date: task.planned_end_date || task.planEnd || task.planned_end_date || task.plan_end || task.plannedEnd || '',
+        actual_start_date: task.actual_start_date || task.actual_start_date || task.actualStart || task.actual_start || task['actual-start-time'] || '',
+        actual_end_date: task.actual_end_date || task.actual_end_date || task.actualEnd || task.actual_end || task['actual-end-time'] || '',
+        progress: (task.progress && typeof task.progress === 'string' && !task.progress.endsWith('%')) ? `${task.progress}%` : (task.progress || '0%'),
+        task_status: task.task_status || task.status || task.task_status || task.taskStatus || task.Status || '未开始'
       };
     });
     

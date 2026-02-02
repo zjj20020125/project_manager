@@ -3,7 +3,7 @@ import os
 # 添加项目根目录到模块搜索路径
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List  # 添加缺失的List导入
 from datetime import datetime  # 添加datetime导入
@@ -1843,7 +1843,95 @@ def get_tasks_by_status_api(status: str):
         return []
 
 
-# 16. 根据任务状态获取任务数据（用于扇形图点击跳转）
+# 16. 根据项目ID或项目名称获取子任务数据（用于项目详情页显示子任务）
+@app.get(f"{API_PREFIX}/project-subtasks/{{project_identifier}}", response_model=List[dict])
+def get_project_subtasks(project_identifier: str):
+    try:
+        # 检查project_tasks表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'project_tasks'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            print("警告: project_tasks表不存在")
+            return []
+        
+        # 检查必要字段是否存在
+        describe_sql = "DESCRIBE project_tasks"
+        columns_result = execute_query(describe_sql, fetch_all=True)
+        if not columns_result:
+            print("警告: 无法获取project_tasks表结构")
+            return []
+        
+        column_names = [col['Field'] for col in columns_result if 'Field' in col]
+        required_columns = ['project_name', 'project_id', 'wbs_code', 'task_name', 'task_owner', 'task_status', 'planned_start_date', 'planned_end_date', 'actual_start_date', 'actual_end_date', 'progress']
+        missing_columns = [col for col in required_columns if col not in column_names]
+        
+        if missing_columns:
+            print(f"警告: project_tasks表缺少以下列: {missing_columns}")
+            return []
+        
+        # 尝试按项目ID查询（如果project_identifier是数字）
+        task_sql = """
+        SELECT 
+            task_id,
+            task_name,
+            project_id,
+            project_name,
+            task_owner,
+            wbs_code,
+            planned_start_date,
+            planned_end_date,
+            actual_start_date,
+            actual_end_date,
+            task_status,
+            progress,
+            created_at
+        FROM project_tasks
+        WHERE 
+        """
+        
+        # 首先尝试将project_identifier作为项目ID（数字）查询
+        try:
+            project_id_int = int(project_identifier)
+            task_sql += "project_id = %s OR project_name = %s"
+            tasks = execute_query(task_sql, (project_id_int, project_identifier), fetch_all=True) or []
+        except ValueError:
+            # 如果project_identifier不是数字，则只按项目名称查询
+            task_sql += "project_name = %s"
+            tasks = execute_query(task_sql, (project_identifier,), fetch_all=True) or []
+        
+        # 格式化数据
+        formatted_tasks = []
+        for task in tasks:
+            if not task:
+                continue
+                
+            formatted_task = {
+                "task_id": task.get("task_id"),
+                "task_name": task.get("task_name", ""),
+                "project_id": task.get("project_id"),
+                "project_name": task.get("project_name", ""),
+                "task_owner": task.get("task_owner", ""),
+                "wbs_code": task.get("wbs_code", ""),
+                "planned_start_date": str(task.get("planned_start_date")) if task.get("planned_start_date") else "",
+                "planned_end_date": str(task.get("planned_end_date")) if task.get("planned_end_date") else "",
+                "actual_start_date": str(task.get("actual_start_date")) if task.get("actual_start_date") else "",
+                "actual_end_date": str(task.get("actual_end_date")) if task.get("actual_end_date") else "",
+                "task_status": task.get("task_status", ""),
+                "progress": float(task.get("progress")) if task.get("progress") is not None else 0.0,
+                "created_at": str(task.get("created_at")) if task.get("created_at") else ""
+            }
+            formatted_tasks.append(formatted_task)
+        
+        print(f"根据项目标识符'{project_identifier}'查询到 {len(formatted_tasks)} 个子任务")
+        return formatted_tasks
+    except Exception as e:
+        print(f"获取项目子任务数据出错: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+
+# 17. 根据任务状态获取任务数据（用于扇形图点击跳转）
 @app.get(f"{API_PREFIX}/tasks-by-project-status/{{status}}", response_model=List[dict])
 def get_tasks_by_project_status(status: str):
     try:
@@ -2289,6 +2377,441 @@ async def get_dqjd_wczz_data():
         import traceback
         traceback.print_exc()
         return {"dqjdStats": [], "wczzStats": [], "tableData": []}
+
+
+# 27. 导入项目数据
+@app.post(f"{API_PREFIX}/projects/import")
+async def import_projects(file: UploadFile = File(...)):
+    try:
+        import pandas as pd
+        import io
+        from datetime import datetime
+        import re
+        
+        # 检查文件类型
+        if not file.filename.lower().endswith((".xlsx", ".xls", ".csv")):
+            raise HTTPException(status_code=400, detail="不支持的文件格式，请上传Excel或CSV文件")
+        
+        # 读取文件内容
+        contents = await file.read()
+        
+        # 根据文件类型处理数据
+        if file.filename.lower().endswith((".xlsx", ".xls")):
+            df = pd.read_excel(io.BytesIO(contents))
+        else:  # CSV
+            df = pd.read_csv(io.BytesIO(contents), encoding='utf-8')
+        
+        # 检查必要字段 - 根据simple_datadeal.py的逻辑，我们只需要确保有任务数据即可
+        if df.empty:
+            raise HTTPException(status_code=400, detail="文件中没有数据")
+        
+        # 从文件名解析项目名和项目经理
+        filename = file.filename
+        name_without_ext = os.path.splitext(filename)[0]
+        
+        # 尝试匹配 "xxx(项目名)-项目经理姓名" 格式
+        match = re.match(r'.*\((.+)\)-(.+)', name_without_ext)
+        
+        if match:
+            project_name = match.group(1).strip()
+            manager_name = match.group(2).strip()
+        else:
+            # 如果不符合上述格式，尝试匹配 "项目名-项目经理姓名" 格式
+            last_dash_index = name_without_ext.rfind('-')
+            if last_dash_index != -1:
+                project_name = name_without_ext[:last_dash_index].strip()
+                manager_name = name_without_ext[last_dash_index+1:].strip()
+            else:
+                # 如果都不符合，返回整个名字作为项目名，项目经理为未知
+                project_name = name_without_ext
+                manager_name = "未知"
+        
+        # 检查projects表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'projects'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            raise HTTPException(status_code=400, detail="数据库中不存在projects表")
+        
+        # 检查project_tasks表是否存在
+        check_tasks_table_sql = "SHOW TABLES LIKE 'project_tasks'"
+        tasks_table_exists = execute_query(check_tasks_table_sql)
+        if not tasks_table_exists:
+            raise HTTPException(status_code=400, detail="数据库中不存在project_tasks表")
+        
+        # 检查项目是否已存在
+        check_project_sql = "SELECT project_id FROM projects WHERE project_name = %s"
+        check_result = execute_query(check_project_sql, (project_name,))
+        
+        if check_result:
+            # 项目已存在，获取现有项目ID
+            project_id = check_result['project_id']
+            print(f"项目 '{project_name}' 已存在，使用现有ID: {project_id}")
+        else:
+            # 分析Excel数据以提取关键信息
+            planned_start_cols = ['计划开始时间', '计划开始日期', 'planned_start', 'planned_start_date', 'start_date_plan', '计划开始', '计划开工']
+            planned_end_cols = ['计划结束时间', '计划结束日期', 'planned_end', 'planned_end_date', 'end_date_plan', '计划结束', '计划完工']
+            actual_start_cols = ['实际开始时间', '实际开始日期', 'actual_start', 'actual_start_date', 'start_date_actual', '实际开始', '实际开工']
+            actual_end_cols = ['实际结束时间', '实际结束日期', 'actual_end', 'actual_end_date', 'end_date_actual', '实际结束', '实际完工']
+
+            # 收集所有日期值
+            planned_starts = []
+            planned_ends = []
+            actual_starts = []
+            actual_ends = []
+
+            for col_name in df.columns:
+                col_name_clean = col_name.strip().replace('\u3000', '').replace(' ', '')  # 去除全角空格和普通空格
+                col_name_lower = col_name_clean.lower()
+
+                # 检查列名是否匹配计划开始日期
+                if any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in planned_start_cols]):
+                    for val in df[col_name]:
+                        if pd.notna(val):
+                            try:
+                                date_val = pd.to_datetime(val).date()
+                                planned_starts.append(date_val)
+                            except:
+                                continue
+
+                # 检查列名是否匹配计划结束日期
+                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in planned_end_cols]):
+                    for val in df[col_name]:
+                        if pd.notna(val):
+                            try:
+                                date_val = pd.to_datetime(val).date()
+                                planned_ends.append(date_val)
+                            except:
+                                continue
+
+                # 检查列名是否匹配实际开始日期
+                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in actual_start_cols]):
+                    for val in df[col_name]:
+                        if pd.notna(val):
+                            try:
+                                date_val = pd.to_datetime(val).date()
+                                actual_starts.append(date_val)
+                            except:
+                                continue
+
+                # 检查列名是否匹配实际结束日期
+                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in actual_end_cols]):
+                    for val in df[col_name]:
+                        if pd.notna(val):
+                            try:
+                                date_val = pd.to_datetime(val).date()
+                                actual_ends.append(date_val)
+                            except:
+                                continue
+
+            # 计算最早的计划开始时间和最晚的计划结束时间
+            earliest_planned_start = min(planned_starts) if planned_starts else None
+            latest_planned_end = max(planned_ends) if planned_ends else None
+            earliest_actual_start = min(actual_starts) if actual_starts else None
+            latest_actual_end = max(actual_ends) if actual_ends else None
+
+            # 根据数据确定项目状态
+            if latest_actual_end and latest_actual_end < datetime.now().date():
+                status = "已完成"
+            elif earliest_actual_start:
+                status = "进行中"
+            elif earliest_planned_start and earliest_planned_start > datetime.now().date():
+                status = "未开始"
+            else:
+                status = "已计划"
+
+            # 插入项目数据
+            insert_project_sql = """
+            INSERT INTO projects (project_name, project_manager, planned_start_date, planned_end_date, 
+                                 actual_start_date, actual_end_date, project_status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+            execute_query(insert_project_sql, (
+                project_name, manager_name, 
+                earliest_planned_start, latest_planned_end,
+                earliest_actual_start, latest_actual_end, 
+                status
+            ), fetch_one=False)
+            
+            # 获取新插入的项目ID
+            project_id = execute_query("SELECT LAST_INSERT_ID()")
+            print(f"成功创建项目 '{project_name}'，ID: {project_id}")
+
+        # 识别可能的列名 - 与simple_datadeal.py保持一致
+        task_name_cols = ['任务名称', 'task_name', 'task', '工作内容', '任务描述', 'task_description', '任务', 'name']
+        wbs_code_cols = ['WBS编码', 'wbs_code', 'wbs', 'WBS', '工作分解结构', 'work_breakdown_structure']
+        task_owner_cols = ['负责人', 'task_owner', 'owner', '责任人', 'task_responsible', 'person_in_charge']
+        planned_start_cols = ['计划开始时间', '计划开始日期', 'planned_start', 'planned_start_date', 'start_date_plan', '计划开始', '计划开工']
+        planned_end_cols = ['计划结束时间', '计划结束日期', 'planned_end', 'planned_end_date', 'end_date_plan', '计划结束', '计划完工']
+        actual_start_cols = ['实际开始时间', '实际开始日期', 'actual_start', 'actual_start_date', 'start_date_actual', '实际开始', '实际开工']
+        actual_end_cols = ['实际结束时间', '实际结束日期', 'actual_end', 'actual_end_date', 'end_date_actual', '实际结束', '实际完工']
+        progress_cols = ['进度', 'progress', '完成度', 'completion_rate', 'percentage']
+        lag_days_cols = ['滞后度(天)', 'lag_days', 'delay_days', 'delay']
+        task_status_cols = ['状态', 'task_status', 'status', '任务状态', '工作状态']
+
+        # 检查该项目是否已经有任务数据
+        check_tasks_sql = "SELECT COUNT(*) as count FROM project_tasks WHERE project_name = %s AND project_id = %s"
+        check_tasks_result = execute_query(check_tasks_sql, (project_name, project_id))
+        count = check_tasks_result['count'] if check_tasks_result and 'count' in check_tasks_result else 0
+        
+        if count > 0:
+            print(f"项目 '{project_name}' (ID: {project_id}) 已有 {count} 条任务数据，跳过重复导入")
+            return {"message": f"项目已存在，跳过重复导入，共跳过 {len(df)} 条任务数据"}
+
+        print(f"开始处理项目 '{project_name}' 的 {len(df)} 行数据")
+        
+        inserted_count = 0
+        
+        # 遍历数据行，插入任务数据
+        for i, row in df.iterrows():
+            task_name = None
+            wbs_code = None
+            task_owner = None
+            planned_start = None
+            planned_end = None
+            actual_start = None
+            actual_end = None
+            progress = None
+            lag_days = None
+            task_status = None
+
+            # 遍历行中的每一列，查找匹配的字段
+            for col_name, col_value in row.items():
+                col_name_clean = col_name.strip().replace('\u3000', '').replace(' ', '')  # 去除全角空格和普通空格
+                col_name_lower = col_name_clean.lower()
+
+                if any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in task_name_cols]) and not task_name:
+                    task_name = str(col_value) if pd.notna(col_value) else None
+                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in wbs_code_cols]) and not wbs_code:
+                    wbs_code = str(col_value) if pd.notna(col_value) else None
+                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in task_owner_cols]) and not task_owner:
+                    task_owner = str(col_value) if pd.notna(col_value) else None
+                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in planned_start_cols]) and not planned_start:
+                    if pd.notna(col_value):
+                        try:
+                            planned_start = pd.to_datetime(col_value).date()
+                        except:
+                            pass
+                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in planned_end_cols]) and not planned_end:
+                    if pd.notna(col_value):
+                        try:
+                            planned_end = pd.to_datetime(col_value).date()
+                        except:
+                            pass
+                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in actual_start_cols]) and not actual_start:
+                    if pd.notna(col_value):
+                        try:
+                            actual_start = pd.to_datetime(col_value).date()
+                        except:
+                            pass
+                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in actual_end_cols]) and not actual_end:
+                    if pd.notna(col_value):
+                        try:
+                            actual_end = pd.to_datetime(col_value).date()
+                        except:
+                            pass
+                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in progress_cols]) and not progress:
+                    if pd.notna(col_value):
+                        try:
+                            # 处理百分比格式
+                            val_str = str(col_value).replace('%', '')
+                            if val_str.replace('.', '').replace('-', '').isdigit():
+                                progress = float(val_str)
+                            else:
+                                progress = None
+                        except:
+                            progress = None
+                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in lag_days_cols]) and not lag_days:
+                    if pd.notna(col_value):
+                        try:
+                            lag_days = float(str(col_value)) if str(col_value).replace('-', '').replace('.', '').isdigit() else None
+                        except:
+                            lag_days = None
+                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in task_status_cols]):
+                    task_status = str(col_value) if pd.notna(col_value) else None
+
+            # 只有当至少有任务名称时才插入记录
+            if task_name and task_name.strip() != '':
+                # 如果task_status未明确指定或为空值，则根据条件计算
+                if not task_status or task_status == 'None' or task_status == '' or task_status.lower() == 'none':
+                    task_status = determine_task_status_import(planned_start, planned_end, actual_start, actual_end, lag_days)
+                else:
+                    # 标准化状态值
+                    if task_status in ['完成', '已完成', 'Finish', 'Finished']:
+                        task_status = '完成'
+                    elif task_status in ['进行中', '执行中', 'In Progress', 'Ongoing']:
+                        task_status = '进行中'
+                    elif task_status in ['未开始', 'Pending', 'Not Started']:
+                        task_status = '未开始'
+                    elif task_status in ['延期完成', 'Delayed Finish']:
+                        task_status = '延期完成'
+                    elif task_status in ['异常', 'Exception', 'Abnormal']:
+                        task_status = '异常'
+                    else:
+                        # 再次使用函数判断状态
+                        task_status = determine_task_status_import(planned_start, planned_end, actual_start, actual_end, lag_days)
+
+                # 根据实际的数据库结构插入任务数据，包括project_id
+                insert_task_sql = """
+                INSERT INTO project_tasks (
+                    project_id, project_name, project_manager, task_name, wbs_code, 
+                    planned_start_date, planned_end_date, actual_start_date, actual_end_date,
+                    progress, task_owner, task_status
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+
+                try:
+                    result = execute_query(insert_task_sql, (
+                        project_id, project_name, manager_name, task_name, wbs_code,
+                        planned_start, planned_end, actual_start, actual_end,
+                        progress, task_owner, task_status
+                    ), fetch_one=False)
+                    if result is not None:  # 检查插入是否成功
+                        inserted_count += 1
+                except Exception as e:
+                    print(f"    插入任务 '{task_name}' 时出错: {e}")
+
+        if inserted_count > 0:
+            print(f"成功插入 {inserted_count} 个任务到项目 '{project_name}' (ID: {project_id})")
+        else:
+            print(f"项目 '{project_name}' 没有找到有效的任务数据或插入失败")
+        
+        return {"message": f"成功导入 {inserted_count} 条任务数据到项目 '{project_name}'"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"导入项目数据出错: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"导入失败: {str(e)}")
+
+
+def determine_task_status_import(planned_start, planned_end, actual_start, actual_end, lag_days):
+    """
+    根据条件确定任务状态 - 与simple_datadeal.py保持一致
+    完成：滞后度一列中为0的，或者说实际开始时间，实际完成时间早于或者等于预计开始时间，预计完成时间
+    延期完成：实际开始时间，实际完成时间晚于预计开始时间，预计完成时间
+    异常：实际开始时间，实际完成时间为空
+    进行中：根据实时的日期，处于预计完成时间跟预计开始时间中间，只填写了实际开始时间
+    """
+    from datetime import datetime
+    current_date = datetime.now().date()
+    
+    # 检查异常情况：实际开始时间或实际完成时间为空
+    if actual_start is None or actual_end is None:
+        if actual_start is None and actual_end is None:
+            return "异常"
+        elif actual_start is not None and actual_end is None:
+            # 如果仅有实际开始时间，检查是否在计划范围内
+            if planned_start and planned_end and planned_start <= current_date <= planned_end:
+                return "进行中"
+            else:
+                return "异常"
+        elif actual_start is None and actual_end is not None:
+            return "异常"
+    
+    # 如果实际开始和完成时间都存在
+    if actual_start and actual_end:
+        # 检查是否为延期完成：实际开始时间或实际完成时间晚于预计开始时间或预计完成时间
+        if ((planned_start and actual_start > planned_start) or 
+            (planned_end and actual_end > planned_end)):
+            return "延期完成"
+        # 检查是否为完成：实际开始时间完成时间早于或等于预计开始时间和完成时间
+        elif ((planned_start and actual_start <= planned_start) and 
+              (planned_end and actual_end <= planned_end)):
+            return "完成"
+        # 如果在计划时间范围内完成
+        elif ((planned_start and planned_end) and 
+              (planned_start <= actual_start <= planned_end) and 
+              (planned_end and actual_end <= planned_end)):
+            return "完成"
+        else:
+            return "延期完成"
+    
+    # 检查进行中：当前日期在计划开始和结束之间，且只有实际开始时间
+    if (planned_start and planned_end and 
+        planned_start <= current_date <= planned_end and 
+        actual_start is not None and actual_end is None):
+        return "进行中"
+    
+    # 默认为异常
+    return "异常"
+
+
+# 28. 导出项目数据
+@app.post(f"{API_PREFIX}/projects/export")
+async def export_projects(request_data: dict):
+    try:
+        import pandas as pd
+        from fastapi.responses import StreamingResponse
+        import io
+        
+        # 获取要导出的项目ID列表
+        project_ids = request_data.get('project_ids', [])
+        
+        # 检查projects表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'projects'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            raise HTTPException(status_code=400, detail="数据库中不存在projects表")
+        
+        # 查询项目数据
+        if project_ids:  # 如果指定了项目ID，则导出选中的项目
+            placeholders = ','.join(['%s'] * len(project_ids))
+            select_sql = f"SELECT * FROM projects WHERE project_id IN ({placeholders}) ORDER BY created_at DESC"
+            projects = execute_query(select_sql, tuple(project_ids), fetch_all=True) or []
+        else:  # 否则导出所有项目
+            select_sql = "SELECT * FROM projects ORDER BY created_at DESC"
+            projects = execute_query(select_sql, fetch_all=True) or []
+        
+        if not projects:
+            raise HTTPException(status_code=404, detail="没有找到要导出的项目数据")
+        
+        # 将数据转换为DataFrame，并确保数据类型正确
+        # 遍历数据，处理可能存在的不可序列化对象
+        processed_projects = []
+        for project in projects:
+            processed_project = {}
+            for key, value in project.items():
+                # 处理日期和时间类型
+                if isinstance(value, (datetime, type(pd.Timestamp))):
+                    processed_project[key] = str(value)
+                # 处理十进制类型
+                elif hasattr(value, 'quantize'):  # 检查是否为Decimal类型
+                    processed_project[key] = float(value)
+                # 其他类型直接使用
+                else:
+                    processed_project[key] = value
+            processed_projects.append(processed_project)
+        
+        df = pd.DataFrame(processed_projects)
+        
+        # 创建内存中的字节流
+        output = io.BytesIO()
+        
+        # 将DataFrame写入Excel
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='项目数据')
+        
+        # 获取字节流内容
+        output.seek(0)
+        
+        # 创建StreamingResponse返回Excel文件
+        def iterfile():
+            yield output.getvalue()
+
+        from datetime import datetime
+        return StreamingResponse(
+            iterfile(),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename=\"项目数据_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx\""}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"导出项目数据出错: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"导出失败: {str(e)}")
 
 
 # 启动服务

@@ -163,8 +163,24 @@
 
           <!-- 任务进度明细表 -->
           <el-card shadow="hover">
-            <div slot="header" class="card-header">项目进度明细表</div>
-            <el-table :data="projectDetails" border style="width: 100%" v-loading="projectDetailsLoading" header-align="center">
+            <div slot="header" class="card-header">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span>项目进度明细表</span>
+                <div>
+                  <el-button type="primary" size="small" @click="showExportDialog">导出</el-button>
+                  <el-button type="success" size="small" @click="showImportDialog">导入</el-button>
+                </div>
+              </div>
+            </div>
+            <el-table 
+              :data="projectDetails" 
+              border 
+              style="width: 100%" 
+              v-loading="projectDetailsLoading" 
+              header-align="center"
+              @selection-change="handleSelectionChange"
+            >
+              <el-table-column type="selection" width="55" align="center" />
               <el-table-column prop="project_id" label="项目编号" width="100" align="center" header-align="center" />
               <el-table-column 
                 prop="project_name" 
@@ -198,6 +214,75 @@
               <el-table-column prop="created_at" label="创建时间" width="180" align="center" header-align="center" />
             </el-table>
           </el-card>
+
+          <!-- 导出选择对话框 -->
+          <el-dialog v-model="exportDialogVisible" title="导出项目数据" width="500px">
+            <div>
+              <p>选择导出方式：</p>
+              <el-radio-group v-model="exportType" style="margin-bottom: 20px;">
+                <el-radio label="selected">导出选中项目</el-radio>
+                <el-radio label="all">导出全部项目</el-radio>
+              </el-radio-group>
+              <div v-if="exportType === 'selected'">
+                <p>已选中 {{ multipleSelection.length }} 个项目</p>
+                <el-alert
+                  v-if="multipleSelection.length === 0"
+                  title="请先勾选要导出的项目"
+                  type="warning"
+                  show-icon
+                  :closable="false"
+                />
+              </div>
+            </div>
+            <template #footer>
+              <span class="dialog-footer">
+                <el-button @click="exportDialogVisible = false">取消</el-button>
+                <el-button 
+                  type="primary" 
+                  @click="confirmExport" 
+                  :disabled="exportType === 'selected' && multipleSelection.length === 0"
+                >
+                  确认导出
+                </el-button>
+              </span>
+            </template>
+          </el-dialog>
+
+          <!-- 导入对话框 -->
+          <el-dialog v-model="importDialogVisible" title="导入项目数据" width="500px">
+            <div>
+              <p>请选择要导入的文件：</p>
+              <el-upload
+                class="upload-demo"
+                drag
+                :action="''"
+                :http-request="handleFileUpload"
+                :auto-upload="false"
+                :show-file-list="true"
+                accept=".xlsx,.xls,.csv"
+                ref="uploadRef"
+                :on-change="onFileChange"
+              >
+                <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+                <div class="el-upload__text">拖拽文件到此处或<em>点击上传</em></div>
+                <template #tip>
+                  <div class="el-upload__tip">支持 .xlsx, .xls, .csv 格式的文件</div>
+                </template>
+              </el-upload>
+            </div>
+            <template #footer>
+              <span class="dialog-footer">
+                <el-button @click="importDialogVisible = false">取消</el-button>
+                <el-button 
+                  type="primary" 
+                  @click="submitUpload" 
+                  :disabled="!selectedFile || !selectedFile.raw"
+                >
+                  确认导入
+                </el-button>
+              </span>
+            </template>
+          </el-dialog>
         </div>
       </div>
     </el-main>
@@ -207,13 +292,22 @@
 <script setup>
 import { ref, onMounted, onUnmounted, reactive } from 'vue'
 import * as echarts from 'echarts'
-import { ElContainer, ElHeader, ElMain, ElRow, ElCol, ElCard, ElMenu, ElMenuItem, ElTable, ElTableColumn, ElTag, ElProgress, ElMessage, vLoading } from 'element-plus'
+import { ElContainer, ElHeader, ElMain, ElRow, ElCol, ElCard, ElMenu, ElMenuItem, ElTable, ElTableColumn, ElTag, ElProgress, ElMessage, vLoading, ElButton, ElDialog, ElRadio, ElRadioGroup, ElAlert, ElUpload } from 'element-plus'
+import { UploadFilled } from '@element-plus/icons-vue'
+import * as XLSX from 'xlsx'
 import { useRouter } from 'vue-router'
 import { projectApi } from '../api/index.js'  // 导入API
 import NcrFlowChart from './ncr/NcrFlowChart.vue'
 import 'element-plus/dist/index.css'
 
 const router = useRouter()
+
+// 为了在模板中使用图标，我们需要将其作为组件返回
+const setup = () => {
+  return {
+    UploadFilled,
+  }
+}
 
 // 当前显示的视图 ('project' 或 'ncr')
 const currentView = ref('project')
@@ -275,6 +369,16 @@ const ownerStatsLoading = ref(false)
 const selectedProjectId = ref('')
 const selectedProjectName = ref('项目任务甘特图')
 const projectOptions = ref([])
+
+// 导入导出相关
+const exportDialogVisible = ref(false)
+const importDialogVisible = ref(false)
+const exportType = ref('selected') // 'selected' 或 'all'
+const multipleSelection = ref([]) // 选中的项目
+const selectedFile = ref(null)
+const uploadRef = ref(null)
+
+// 在setup函数中返回uploadRef，以便在模板中使用
 
 // 任务状态对应的标签类型
 const statusTagType = {
@@ -573,6 +677,152 @@ const debugGanttData = async () => {
     console.error('调试甘特图数据失败:', error);
   }
 }
+
+// 项目选择变化处理
+const handleSelectionChange = (val) => {
+  multipleSelection.value = val;
+};
+
+// 显示导出对话框
+const showExportDialog = () => {
+  exportDialogVisible.value = true;
+  exportType.value = 'selected';
+};
+
+// 显示导入对话框
+const showImportDialog = () => {
+  importDialogVisible.value = true;
+};
+
+// 确认导出
+const confirmExport = async () => {
+  try {
+    let projectIds = [];
+    
+    if (exportType.value === 'all') {
+      // 导出所有项目
+      projectIds = [];
+    } else {
+      // 导出选中项目
+      if (multipleSelection.value.length === 0) {
+        ElMessage.warning('请先选择要导出的项目');
+        return;
+      }
+      projectIds = multipleSelection.value.map(item => item.project_id);
+    }
+    
+    // 调用后端API导出数据
+    const response = await projectApi.exportProjects(projectIds);
+    
+    // 检查响应类型
+    if (response instanceof Blob) {
+      // 直接处理Blob响应
+      const url = window.URL.createObjectURL(response);
+      const link = document.createElement('a');
+      const fileName = `项目数据_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.xlsx`;
+      
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      
+      // 清理临时元素
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } else {
+      // 如果响应不是Blob，可能是错误响应
+      throw new Error('导出失败：服务器返回了意外的响应格式');
+    }
+    
+    ElMessage.success('导出成功');
+    exportDialogVisible.value = false;
+  } catch (error) {
+    console.error('导出失败:', error);
+    console.error('错误详情:', error.message);
+    
+    // 尝试获取更详细的错误信息
+    if (error.response) {
+      // 服务器返回了错误状态码
+      ElMessage.error(`导出失败: ${error.response.status} - ${error.response.statusText || '未知错误'}`);
+    } else if (error.message) {
+      ElMessage.error(`导出失败: ${error.message}`);
+    } else {
+      ElMessage.error('导出失败，请检查网络连接或联系管理员');
+    }
+  }
+};
+
+// 监听文件选择
+const onFileChange = (file) => {
+  selectedFile.value = file;
+  console.log('Selected file:', file);
+};
+
+// 提交上传
+const submitUpload = async () => {
+  if (selectedFile.value && selectedFile.value.raw) {
+    // 直接调用处理文件上传函数，使用文件的原始对象
+    await handleFileUpload({ file: selectedFile.value.raw });
+  }
+};
+
+// 处理文件上传
+const handleFileUpload = async (options) => {
+  try {
+    const file = options.file;
+    
+    // 验证文件类型
+    const fileExt = file.name.split('.').pop().toLowerCase();
+    if (!['xlsx', 'xls', 'csv'].includes(fileExt)) {
+      ElMessage.error('仅支持 .xlsx, .xls, .csv 格式的文件');
+      return;
+    }
+    
+    // 将文件上传到后端
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      // 调用后端导入API
+      const response = await projectApi.importProjects(formData);
+      
+      ElMessage.success(`${file.name} 导入成功，共 ${response.message}`);
+      importDialogVisible.value = false;
+      
+      // 重置文件选择
+      selectedFile.value = null;
+      
+      // 重新获取项目数据以显示更新
+      await fetchProjectDetails();
+    } catch (apiError) {
+      console.error('导入文件失败:', apiError);
+      ElMessage.error('导入文件失败，请检查文件格式');
+    }
+  } catch (error) {
+    console.error('文件上传失败:', error);
+    ElMessage.error('文件上传失败');
+  }
+};
+
+// 验证项目数据格式
+const validateProjectData = (data) => {
+  if (!Array.isArray(data) || data.length === 0) {
+    return false;
+  }
+  
+  // 定义必需的字段
+  const requiredFields = ['project_name', 'project_manager'];
+  
+  for (const row of data) {
+    for (const field of requiredFields) {
+      if (!(field in row)) {
+        return false;
+      }
+    }
+  }
+  
+  return true;
+};
 
 // 监听窗口 resize，自适应图表
 const resizeCharts = () => {

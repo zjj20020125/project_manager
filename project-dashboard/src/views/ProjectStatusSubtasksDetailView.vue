@@ -141,6 +141,24 @@ const route = useRoute()
 // 从路由参数获取状态
 const status = ref(route.params.status || '')
 
+// 状态映射函数：将前端显示的状态映射到数据库中的实际状态
+const mapStatusToDb = (displayStatus) => {
+  switch(displayStatus) {
+    case '未开始':
+      return '未开始';  // 数据库中可能没有这个状态，但可以尝试
+    case '进行中':
+      return '进行中';  // 数据库中可能没有这个状态，但可以尝试
+    case '已完成':
+      return '完成';  // 映射到数据库中的'完成'
+    case '已结项':
+      return '完成';  // 已结项通常意味着任务完成
+    case '已验收':
+      return '完成';  // 已验收通常意味着任务完成
+    default:
+      return displayStatus;  // 如果没有匹配项，返回原始状态
+  }
+}
+
 // 数据状态
 const loading = ref(false)
 const subtasks = ref([])
@@ -182,7 +200,9 @@ const fetchSubtasks = async () => {
   loading.value = true
   try {
     // 根据项目状态获取对应的任务数据
-    const response = await projectApi.getTasksByProjectStatusTasks(status.value)
+    // 使用状态映射以匹配数据库中的实际状态
+    const mappedStatus = mapStatusToDb(status.value)
+    const response = await projectApi.getTasksByProjectStatusTasks(mappedStatus)
     
     // 转换数据格式以匹配前端表格字段
     const convertedResponse = response.map(convertTaskData);
@@ -228,7 +248,9 @@ const calculateStats = (tasksData) => {
 const fetchAllSubtasks = async () => {
   try {
     // 根据项目状态获取对应的任务数据
-    const response = await projectApi.getTasksByProjectStatusTasks(status.value)
+    // 使用状态映射以匹配数据库中的实际状态
+    const mappedStatus = mapStatusToDb(status.value)
+    const response = await projectApi.getTasksByProjectStatusTasks(mappedStatus)
     // 转换数据格式以匹配前端表格字段
     return response.map(convertTaskData) || [];
   } catch (error) {
