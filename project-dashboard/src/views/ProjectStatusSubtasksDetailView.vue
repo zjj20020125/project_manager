@@ -3,7 +3,7 @@
     <div class="header-section">
       <h2>{{ status }} 项目子任务详情</h2>
       <div class="back-button">
-        <button @click="goBack" class="btn btn-primary">返回首页</button>
+        <button @click="goBack" class="btn btn-primary">返回</button>
       </div>
     </div>
 
@@ -290,9 +290,9 @@ const formatDate = (dateString) => {
   return date.toISOString().split('T')[0]
 }
 
-// 返回首页
+// 返回上一页
 const goBack = () => {
-  router.push({ name: 'Home' })
+  router.push({ name: 'HomePage' })
 }
 
 // 处理分页大小变化

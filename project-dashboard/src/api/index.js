@@ -4,11 +4,18 @@ import axios from 'axios';
 // 创建axios实例，配置基础URL和默认参数
 const apiClient = axios.create({
   baseURL: '/api', // API的基础路径，使用代理转发 - 代理会自动添加/v1前缀
-  timeout: 15000, // 增加请求超时时间
+  timeout: 30000, // 增加请求超时时间到30秒
   headers: {
     'Content-Type': 'application/json',
-  }
+  },
+  // 配置重试机制
+  retry: 3,
+  retryDelay: 1000
 });
+
+// 添加基础URL调试信息
+console.log('API Client BaseURL:', apiClient.defaults.baseURL);
+console.log('Current Location:', window.location.href);
 
 // 请求拦截器
 apiClient.interceptors.request.use(
@@ -18,7 +25,16 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    console.log('发起API请求:', config.url, config.method); // 添加请求日志
+    
+    // 添加完整的请求URL信息
+    const fullUrl = `${config.baseURL || ''}${config.url}`;
+    console.log('发起API请求:', {
+      method: config.method,
+      url: fullUrl,
+      baseURL: config.baseURL,
+      path: config.url
+    });
+    
     return config;
   },
   error => {
@@ -35,7 +51,27 @@ apiClient.interceptors.response.use(
     return response.data;
   },
   error => {
-    // 对响应错误做点什么
+    // 特别处理异步响应错误
+    if (error.message && error.message.includes('A listener indicated an asynchronous response')) {
+      console.warn('检测到浏览器扩展干扰的异步响应错误，正在重试...');
+      // 这种错误通常是临时的，可以尝试重新发送请求
+      const config = error.config;
+      if (config && !config.__retryCount) {
+        config.__retryCount = 0;
+      }
+      
+      if (config.__retryCount < 2) { // 最多重试2次
+        config.__retryCount += 1;
+        console.log(`第 ${config.__retryCount} 次重试请求:`, config.url);
+        return new Promise(resolve => {
+          setTimeout(() => {
+            resolve(apiClient(config));
+          }, 1000); // 延迟1秒后重试
+        });
+      }
+    }
+    
+    // 对其他响应错误做点什么
     console.error('API Error:', error.response || error.message || error);
     
     // 根据错误类型提供更友好的错误信息
@@ -107,8 +143,8 @@ export const projectApi = {
     return apiClient.get(`/v1/task-gantt-data${params}`);
   },
   
-  // 获取任务负责人统计
-  getTaskOwnerStats: () => apiClient.get('/v1/task-owner-stats'),
+  // 获取异常节点负责人统计
+  getAbnormalTaskOwnerStats: () => apiClient.get('/v1/abnormal-task-owner-stats'),
   
   // 获取项目列表
   getProjectsList: () => apiClient.get('/v1/projects-list'),
@@ -117,6 +153,12 @@ export const projectApi = {
   getOwnerTasks: (owner) => {
     const encodedOwner = encodeURIComponent(owner);
     return apiClient.get(`/v1/owner-tasks/${encodedOwner}`);
+  },
+  
+  // 获取指定负责人负责的异常任务详情
+  getOwnerAbnormalTasks: (owner) => {
+    const encodedOwner = encodeURIComponent(owner);
+    return apiClient.get(`/v1/owner-abnormal-tasks/${encodedOwner}`);
   },
   
   // 根据任务状态获取任务列表
@@ -190,11 +232,18 @@ export const projectApi = {
   getDqjdWczzData: () => apiClient.get('/v1/dqjd-wczz-data'),
   
   // 导入项目数据
-  importProjects: (formData) => apiClient.post('/v1/projects/import', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data'
+  importProjects: (formData, overwrite = false) => {
+    const params = new URLSearchParams();
+    if (overwrite) {
+      params.append('overwrite', 'true');
     }
-  }),
+    
+    return apiClient.post(`/v1/projects/import?${params.toString()}`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
+  },
   
   // 导出项目数据
   exportProjects: (projectIds) => {

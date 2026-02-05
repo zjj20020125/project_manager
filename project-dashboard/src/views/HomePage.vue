@@ -76,14 +76,14 @@
             <!-- 任务负责人统计（表格形式） -->
             <el-col :span="8">
               <el-card shadow="hover">
-                <div slot="header" class="card-header">任务负责人统计</div>
+                <div slot="header" class="card-header">异常子任务负责人统计</div>
                 <el-table 
-                  :data="taskOwnerStats" 
+                  :data="abnormalTaskOwnerStats" 
                   border 
                   style="width: 100%" 
                   height="260"
                   :fit="true"
-                  v-loading="ownerStatsLoading"
+                  v-loading="abnormalOwnerStatsLoading"
                 >
                   <el-table-column prop="owner_name" label="负责人姓名" align="center" header-align="center">
                     <template #default="scope">
@@ -95,9 +95,9 @@
                       </span>
                     </template>
                   </el-table-column>
-                  <el-table-column prop="task_count" label="负责任务数" align="center" header-align="center">
+                  <el-table-column prop="task_count" label="异常子任务数" align="center" header-align="center">
                     <template #default="scope">
-                      <el-tag type="success" style="text-align: center">{{ scope.row.task_count }} 项</el-tag>
+                      <el-tag type="danger" style="text-align: center">{{ scope.row.task_count }} 项</el-tag>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -361,9 +361,9 @@ const projectCategoryStats = ref({
 // 任务表格数据
 const taskTableData = ref([])
 
-// 任务负责人统计相关
-const taskOwnerStats = ref([])
-const ownerStatsLoading = ref(false)
+// 异常节点负责人统计相关
+const abnormalTaskOwnerStats = ref([])
+const abnormalOwnerStatsLoading = ref(false)
 
 // 项目选择相关
 const selectedProjectId = ref('')
@@ -534,11 +534,11 @@ const goToProjectSubtasks = (projectId, projectName) => {
   })
 }
 
-// 跳转到负责人项目子任务详情页面
+// 跳转到异常子任务负责人详情页面
 const goToOwnerTaskDetail = (ownerName) => {
-  // 使用路由跳转到负责人项目子任务详情页面
+  // 使用路由跳转到异常子任务负责人详情页面
   router.push({ 
-    name: 'OwnerProjectSubtasks', 
+    name: 'AbnormalOwnerDetail', 
     params: { owner: encodeURIComponent(ownerName || '') }
   })
 }
@@ -768,9 +768,10 @@ const submitUpload = async () => {
 
 // 处理文件上传
 const handleFileUpload = async (options) => {
+  const file = options.file;
+  let loading = null;
+  
   try {
-    const file = options.file;
-    
     // 验证文件类型
     const fileExt = file.name.split('.').pop().toLowerCase();
     if (!['xlsx', 'xls', 'csv'].includes(fileExt)) {
@@ -778,15 +779,89 @@ const handleFileUpload = async (options) => {
       return;
     }
     
-    // 将文件上传到后端
-    const formData = new FormData();
-    formData.append('file', file);
+    // 验证文件大小（限制为50MB）
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (file.size > maxSize) {
+      ElMessage.error('文件大小不能超过50MB');
+      return;
+    }
+    
+    // 显示上传进度
+    loading = ElLoading.service({
+      lock: true,
+      text: '文件上传中，请稍候...',
+      background: 'rgba(0, 0, 0, 0.7)'
+    });
     
     try {
-      // 调用后端导入API
-      const response = await projectApi.importProjects(formData);
+      // 添加超时控制
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('请求超时')), 30000); // 30秒超时
+      });
       
-      ElMessage.success(`${file.name} 导入成功，共 ${response.message}`);
+      // 将文件上传到后端
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      // 使用Promise.race实现超时控制
+      const response = await Promise.race([
+        projectApi.importProjects(formData),
+        timeoutPromise
+      ]);
+      
+      // 关闭加载提示
+      if (loading) {
+        loading.close();
+      }
+      
+      // 检查响应中是否包含关于重复数据的信息
+      if (response && response.existing_count !== undefined) {
+        try {
+          // 询问用户是否覆盖现有数据
+          const overwriteConfirm = await ElMessageBox.confirm(
+            `项目已存在 ${response.existing_count} 条任务数据，是否覆盖现有数据？`,
+            '数据重复',
+            {
+              confirmButtonText: '覆盖',
+              cancelButtonText: '取消',
+              type: 'warning',
+              distinguishCancelAndClose: true
+            }
+          );
+          
+          if (overwriteConfirm === 'confirm') {
+            // 用户选择覆盖，重新调用API并启用覆盖选项
+            const overwriteLoading = ElLoading.service({
+              lock: true,
+              text: '正在覆盖数据...',
+              background: 'rgba(0, 0, 0, 0.7)'
+            });
+            
+            try {
+              const overwriteResponse = await projectApi.importProjects(formData, true);
+              overwriteLoading.close();
+              ElMessage.success(`${file.name} 导入成功，${overwriteResponse.message}`);
+            } catch (overwriteError) {
+              overwriteLoading.close();
+              throw overwriteError;
+            }
+          } else {
+            ElMessage.info('导入已取消');
+            return;
+          }
+        } catch (confirmError) {
+          // 用户取消或关闭对话框
+          if (confirmError === 'cancel' || confirmError === 'close') {
+            ElMessage.info('导入已取消');
+            return;
+          }
+          throw confirmError;
+        }
+      } else {
+        ElMessage.success(`${file.name} 导入成功，${response.message}`);
+      }
+      
+      // 关闭对话框
       importDialogVisible.value = false;
       
       // 重置文件选择
@@ -794,13 +869,50 @@ const handleFileUpload = async (options) => {
       
       // 重新获取项目数据以显示更新
       await fetchProjectDetails();
+      
     } catch (apiError) {
+      // 关闭加载提示
+      if (loading) {
+        loading.close();
+      }
+      
       console.error('导入文件失败:', apiError);
-      ElMessage.error('导入文件失败，请检查文件格式');
+      
+      // 提供更详细的错误信息
+      let errorMessage = '导入文件失败';
+      
+      if (apiError.message === '请求超时') {
+        errorMessage = '请求超时，请检查网络连接或稍后重试';
+      } else if (apiError.response) {
+        // 服务器返回了错误响应
+        if (apiError.response.data) {
+          if (apiError.response.data.detail) {
+            errorMessage = `导入失败: ${apiError.response.data.detail}`;
+          } else if (apiError.response.data.message) {
+            errorMessage = `导入失败: ${apiError.response.data.message}`;
+          } else {
+            errorMessage = `服务器错误 (${apiError.response.status})`;
+          }
+        } else {
+          errorMessage = `HTTP错误 ${apiError.response.status}: ${apiError.response.statusText}`;
+        }
+      } else if (apiError.request) {
+        // 请求已发出但没有收到响应
+        errorMessage = '网络连接失败，请检查网络连接';
+      } else {
+        // 请求配置出错
+        errorMessage = `请求配置错误: ${apiError.message}`;
+      }
+      
+      ElMessage.error(errorMessage);
     }
   } catch (error) {
     console.error('文件上传失败:', error);
-    ElMessage.error('文件上传失败');
+    // 关闭加载提示
+    if (loading) {
+      loading.close();
+    }
+    ElMessage.error('文件上传过程中发生错误');
   }
 };
 
@@ -846,7 +958,7 @@ onMounted(async () => {
       fetchProjectCategoryStats(),
       fetchProjectDetails(),
       fetchProjectsList(),
-      initTaskOwnerStats()  // 添加任务负责人统计初始化
+      initAbnormalTaskOwnerStats()  // 添加异常节点负责人统计初始化
     ]);
     
     // 使用setTimeout确保DOM完全渲染后再初始化图表
@@ -1088,7 +1200,7 @@ const initLoadBar = async () => {
       },
       series: [
         {
-          name: '负载数',
+          name: '项目数',
           type: 'bar',
           data: coloredLoads,
           barWidth: '40%'
@@ -1108,17 +1220,17 @@ const initLoadBar = async () => {
   }
 }
 
-// 初始化任务负责人统计表格
-const initTaskOwnerStats = async () => {
-  ownerStatsLoading.value = true;
+// 初始化异常节点负责人统计表格
+const initAbnormalTaskOwnerStats = async () => {
+  abnormalOwnerStatsLoading.value = true;
   try {
-    const stats = await projectApi.getTaskOwnerStats();
-    taskOwnerStats.value = stats;
+    const stats = await projectApi.getAbnormalTaskOwnerStats();
+    abnormalTaskOwnerStats.value = stats;
   } catch (error) {
-    console.error('获取任务负责人统计失败:', error);
-    ElMessage.error('获取任务负责人统计失败');
+    console.error('获取异常节点负责人统计失败:', error);
+    ElMessage.error('获取异常节点负责人统计失败');
   } finally {
-    ownerStatsLoading.value = false;
+    abnormalOwnerStatsLoading.value = false;
   }
 }
 

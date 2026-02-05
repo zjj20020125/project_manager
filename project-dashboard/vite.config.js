@@ -10,9 +10,10 @@ export default defineConfig({
     open: true,
     proxy: {
       '/api': {
-        target: 'http://172.16.33.192:8001', // 后端API地址 - 修改为局域网IP
+        target: 'http://127.0.0.1:8001', // 使用127.0.0.1替代localhost
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '')
+        rewrite: (path) => path.replace(/^\/api/, ''),
+        secure: false // 允许HTTP请求
       }
     },
     // 添加CSP头

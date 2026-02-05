@@ -481,6 +481,98 @@ def analyze_excel_data(data_list):
     
     return earliest_planned_start, latest_planned_end, earliest_actual_start, latest_actual_end, status
 
+def process_single_file(file_path, overwrite=False):
+    """处理单个Excel文件并导入到数据库"""
+    filename = os.path.basename(file_path)
+    project_name, manager_name = parse_filename(filename)
+    
+    print(f"\n处理表格: {filename}")
+    print(f"  解析项目名: {project_name}")
+    print(f"  解析项目经理: {manager_name}")
+    
+    # 读取文件数据
+    file_data = read_excel_data(file_path)
+    
+    if not file_data:
+        print(f"  警告: 无法读取文件 {file_path} 的数据")
+        return {"success": False, "message": "无法读取文件数据"}
+    
+    # 分析数据，提取关键信息
+    planned_start, planned_end, actual_start, actual_end, status = analyze_excel_data(file_data)
+    
+    # 获取或创建项目ID
+    project_id = get_or_create_project_id(
+        project_name, 
+        manager_name, 
+        planned_start, 
+        planned_end, 
+        actual_start, 
+        actual_end, 
+        status
+    )
+    
+    if project_id is None:
+        print(f"  ✗ 无法获取或创建项目ID，跳过此文件")
+        return {"success": False, "message": "无法创建项目"}
+    
+    # 如果需要覆盖，先清空现有数据
+    if overwrite:
+        clear_existing_project_tasks(project_id, project_name)
+    
+    # 将任务信息插入到project_tasks表
+    success = insert_tasks_to_db(
+        project_id,
+        project_name,
+        manager_name,
+        file_data
+    )
+    
+    result = {
+        "success": success,
+        "filename": filename,
+        "project_name": project_name,
+        "manager_name": manager_name,
+        "project_id": project_id,
+        "data_rows": len(file_data),
+        "planned_start": planned_start,
+        "planned_end": planned_end,
+        "actual_start": actual_start,
+        "actual_end": actual_end,
+        "status": status
+    }
+    
+    if success:
+        print(f"  ✓ 项目任务信息已成功导入数据库")
+        result["message"] = "导入成功"
+    else:
+        print(f"  ✗ 项目任务信息导入数据库失败")
+        result["message"] = "导入失败"
+    
+    return result
+
+def clear_existing_project_tasks(project_id, project_name):
+    """清空指定项目的现有任务数据"""
+    connection = connect_to_database()
+    if not connection:
+        return False
+    
+    cursor = connection.cursor()
+    try:
+        # 清空该项目的任务数据
+        delete_sql = "DELETE FROM project_tasks WHERE project_id = %s AND project_name = %s"
+        cursor.execute(delete_sql, (project_id, project_name))
+        connection.commit()
+        deleted_count = cursor.rowcount
+        print(f"  已清空项目 '{project_name}' 的 {deleted_count} 条任务数据")
+        return True
+    except mysql.connector.Error as e:
+        print(f"  清空项目任务数据时出错: {e}")
+        return False
+    finally:
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+
 def main():
     print("开始处理Excel文件并导入到数据库...")
     

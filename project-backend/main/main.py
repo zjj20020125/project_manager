@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List  # 添加缺失的List导入
 from datetime import datetime  # 添加datetime导入
 import uvicorn
+import tempfile
+import shutil
 
 # 从config模块导入配置
 import config.config
@@ -364,15 +366,15 @@ def get_chart_data():
         ]
         
         # 3. 项目经理负载（从数据库查询）
-        # jgj-project数据库中没有project_members表，使用project_tasks中的project_manager字段
+        # 统计每个项目经理负责的项目数量（去重）
         load_sql = """
-        SELECT project_manager, COUNT(task_id) as load_count
+        SELECT project_manager, COUNT(DISTINCT project_name) as project_count
         FROM project_tasks
         WHERE project_manager IS NOT NULL
         GROUP BY project_manager
         """
         load_data = execute_query(load_sql, fetch_all=True) or []
-        load_bar = [{"name": item["project_manager"], "value": item["load_count"]} for item in load_data if item and "project_manager" in item and "load_count" in item]
+        load_bar = [{"name": item["project_manager"], "value": item["project_count"]} for item in load_data if item and "project_manager" in item and "project_count" in item]
         
         # 4. 甘特图数据（从任务表查询）
         gantt_sql = """
@@ -1170,9 +1172,9 @@ def get_task_gantt_data(project_name: str = None):
         traceback.print_exc()
         return []
 
-# 12. 获取任务负责人统计
-@app.get(f"{API_PREFIX}/task-owner-stats", response_model=List[dict])
-def get_task_owner_stats():
+# 12. 获取异常节点负责人统计
+@app.get(f"{API_PREFIX}/abnormal-task-owner-stats", response_model=List[dict])
+def get_abnormal_task_owner_stats():
     try:
         # 检查project_tasks表是否存在
         check_table_sql = "SHOW TABLES LIKE 'project_tasks'"
@@ -1189,46 +1191,65 @@ def get_task_owner_stats():
             return []
         
         column_names = [col['Field'] for col in columns_result if 'Field' in col]
-        required_columns = ['task_owner']
+        required_columns = ['task_owner', 'task_status', 'wbs_code']
         missing_columns = [col for col in required_columns if col not in column_names]
         
         if missing_columns:
             print(f"警告: project_tasks表缺少以下列: {missing_columns}")
             return []
         
-        # 查询任务负责人统计
-        owner_stats_sql = """
+        # 查询异常状态的任务（状态为'异常'的任务）
+        abnormal_tasks_sql = """
         SELECT 
             task_owner,
-            COUNT(*) as task_count
+            task_name
         FROM project_tasks
-        WHERE task_owner IS NOT NULL 
+        WHERE task_status = '异常'
+          AND task_owner IS NOT NULL 
           AND task_owner != ''
           AND task_owner != 'nan'
           AND task_owner != 'NaN'
           AND task_owner != 'null'
-        GROUP BY task_owner
-        ORDER BY task_count DESC
         """
-        owner_stats_results = execute_query(owner_stats_sql, fetch_all=True) or []
+        abnormal_tasks_results = execute_query(abnormal_tasks_sql, fetch_all=True) or []
         
-        # 格式化返回数据
+        # 统计负责人数量，处理多人负责的情况
+        owner_count = {}
+        
+        for task in abnormal_tasks_results:
+            if task is not None:
+                task_owner = task.get('task_owner', '')
+                if task_owner and task_owner.strip():
+                    # 处理多个负责人的情况（逗号、分号、顿号分隔）
+                    separators = [',', '，', ';', '；', '/', '、']
+                    names = [task_owner]
+                    
+                    # 尝试分割多个负责人
+                    for sep in separators:
+                        if sep in task_owner:
+                            names = task_owner.split(sep)
+                            break
+                    
+                    # 清理并统计每个负责人
+                    for name in names:
+                        clean_name = name.strip()
+                        if clean_name and clean_name not in ['nan', 'NaN', 'null', 'NULL', '<NULL>', 'None']:
+                            owner_count[clean_name] = owner_count.get(clean_name, 0) + 1
+        
+        # 转换为所需格式并排序
         formatted_results = []
-        for result in owner_stats_results:
-            if result is not None:
-                owner_name = result.get('task_owner', '未知负责人')
-                # 检查是否为异常数据
-                if owner_name in ['nan', 'NaN', 'null', 'NULL', '<NULL>', 'None'] or str(owner_name).lower() == 'nan':
-                    owner_name = '异常数据'
-                
-                formatted_results.append({
-                    "owner_name": owner_name,
-                    "task_count": result.get('task_count', 0)
-                })
+        for owner_name, count in owner_count.items():
+            formatted_results.append({
+                "owner_name": owner_name,
+                "task_count": count
+            })
         
-        return formatted_results
+        # 按任务数量降序排列，只返回前10名
+        formatted_results.sort(key=lambda x: x['task_count'], reverse=True)
+        return formatted_results[:10]
+        
     except Exception as e:
-        print(f"获取任务负责人统计出错: {e}")
+        print(f"获取异常节点负责人统计出错: {e}")
         return []
 
 # 13. 获取指定负责人负责的任务详情
@@ -1296,6 +1317,96 @@ def get_owner_tasks(owner: str):
         return formatted_results
     except Exception as e:
         print(f"获取负责人任务详情出错: {e}")
+        return []
+
+# 13.1 获取指定负责人负责的异常任务详情
+@app.get(f"{API_PREFIX}/owner-abnormal-tasks/{{owner}}", response_model=List[dict])
+def get_owner_abnormal_tasks(owner: str):
+    try:
+        # 检查project_tasks表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'project_tasks'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            print("警告: project_tasks表不存在")
+            return []
+        
+        # 检查必要字段是否存在
+        describe_sql = "DESCRIBE project_tasks"
+        columns_result = execute_query(describe_sql, fetch_all=True)
+        if not columns_result:
+            print("警告: 无法获取project_tasks表结构")
+            return []
+        
+        column_names = [col['Field'] for col in columns_result if 'Field' in col]
+        required_columns = ['task_owner', 'task_name', 'project_name', 'wbs_code', 'planned_start_date', 'planned_end_date', 'actual_start_date', 'actual_end_date', 'task_status', 'progress', 'created_at']
+        missing_columns = [col for col in required_columns if col not in column_names]
+        
+        if missing_columns:
+            print(f"警告: project_tasks表缺少以下列: {missing_columns}")
+            return []
+        
+        # 查询指定负责人负责的异常任务详情
+        # 处理多个负责人的情况
+        owner_abnormal_tasks_sql = """
+        SELECT 
+            task_id,
+            task_name,
+            project_name,
+            task_owner,
+            wbs_code,
+            planned_start_date,
+            planned_end_date,
+            actual_start_date,
+            actual_end_date,
+            task_status,
+            progress,
+            created_at
+        FROM project_tasks
+        WHERE task_status = '异常'
+          AND (
+            task_owner = %s OR
+            task_owner LIKE CONCAT('%%', %s, ',%%') OR
+            task_owner LIKE CONCAT('%%', %s, '，%%') OR
+            task_owner LIKE CONCAT('%%', %s, ';%%') OR
+            task_owner LIKE CONCAT('%%', %s, '；%%') OR
+            task_owner LIKE CONCAT('%%', %s, '/%%') OR
+            task_owner LIKE CONCAT('%%', %s, '、%%') OR
+            task_owner LIKE CONCAT(%s, ',%%') OR
+            task_owner LIKE CONCAT(%s, '，%%') OR
+            task_owner LIKE CONCAT(%s, ';%%') OR
+            task_owner LIKE CONCAT(%s, '；%%') OR
+            task_owner LIKE CONCAT(%s, '/%%') OR
+            task_owner LIKE CONCAT(%s, '、%%')
+          )
+        ORDER BY created_at DESC
+        """
+        
+        owner_abnormal_tasks_results = execute_query(owner_abnormal_tasks_sql, 
+            (owner, owner, owner, owner, owner, owner, owner, 
+             owner, owner, owner, owner, owner, owner), fetch_all=True) or []
+        
+        # 格式化返回数据
+        formatted_results = []
+        for result in owner_abnormal_tasks_results:
+            if result is not None:
+                formatted_results.append({
+                    "task_id": result.get('task_id'),
+                    "taskName": result.get('task_name', ''),
+                    "projectName": result.get('project_name', ''),
+                    "task_owner": result.get('task_owner', ''),
+                    "wbsNo": result.get('wbs_code', ''),
+                    "planStart": str(result.get('planned_start_date')) if result.get('planned_start_date') else None,
+                    "planEnd": str(result.get('planned_end_date')) if result.get('planned_end_date') else None,
+                    "actual_start_date": str(result.get('actual_start_date')) if result.get('actual_start_date') else None,
+                    "actual_end_date": str(result.get('actual_end_date')) if result.get('actual_end_date') else None,
+                    "status": result.get('task_status', ''),
+                    "progress": float(result.get('progress')) if result.get('progress') is not None else 0.0,
+                    "created_at": str(result.get('created_at')) if result.get('created_at') else None
+                })
+        
+        return formatted_results
+    except Exception as e:
+        print(f"获取负责人异常任务详情出错: {e}")
         return []
 
 # 21. 获取NCR类型分布统计（用于饼图）
@@ -2401,9 +2512,21 @@ async def import_projects(file: UploadFile = File(...)):
         else:  # CSV
             df = pd.read_csv(io.BytesIO(contents), encoding='utf-8')
         
-        # 检查必要字段 - 根据simple_datadeal.py的逻辑，我们只需要确保有任务数据即可
+        # 数据验证 - 检查文件是否为空
         if df.empty:
             raise HTTPException(status_code=400, detail="文件中没有数据")
+        
+        # 数据验证 - 检查必要的列是否存在
+        required_columns = ['任务名称', 'task_name', 'task', '工作内容', '任务描述', 'task_description', '任务', 'name']
+        available_columns = [col.strip().replace('\u3000', '').replace(' ', '').lower() for col in df.columns]
+        
+        has_required_col = any(any(req_col.replace('\u3000', '').replace(' ', '').lower() in avail_col 
+                                   for req_col in ['任务名称', 'task_name', 'task', '工作内容', '任务描述', 'task_description', '任务', 'name']) 
+                                   for avail_col in available_columns)
+        
+        if not has_required_col:
+            # 如果没有找到必要的列，发出警告但仍继续处理
+            print("警告: 未找到标准的任务名称列，仍将尝试导入数据")
         
         # 从文件名解析项目名和项目经理
         filename = file.filename
@@ -2554,8 +2677,16 @@ async def import_projects(file: UploadFile = File(...)):
         count = check_tasks_result['count'] if check_tasks_result and 'count' in check_tasks_result else 0
         
         if count > 0:
-            print(f"项目 '{project_name}' (ID: {project_id}) 已有 {count} 条任务数据，跳过重复导入")
-            return {"message": f"项目已存在，跳过重复导入，共跳过 {len(df)} 条任务数据"}
+            print(f"项目 '{project_name}' (ID: {project_id}) 已有 {count} 条任务数据")
+            # 询问用户是否覆盖现有数据
+            overwrite = request_data.get('overwrite', False) if request_data else False
+            if not overwrite:
+                return {"message": f"项目已存在 {count} 条任务数据，如需覆盖请使用overwrite=true参数", "existing_count": count}
+            else:
+                # 删除现有任务数据
+                delete_tasks_sql = "DELETE FROM project_tasks WHERE project_name = %s AND project_id = %s"
+                execute_query(delete_tasks_sql, (project_name, project_id), fetch_one=False)
+                print(f"已删除项目 '{project_name}' (ID: {project_id}) 的 {count} 条旧任务数据")
 
         print(f"开始处理项目 '{project_name}' 的 {len(df)} 行数据")
         

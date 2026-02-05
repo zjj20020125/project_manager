@@ -17,6 +17,7 @@ import NcrFlowChart from '../views/ncr/NcrFlowChart.vue'
 import NcrStageDetail from '../views/ncr/NcrStageDetail.vue'
 import NcrItemDetail from '../views/ncr/NcrItemDetail.vue'
 import NcrHomePage from '../views/ncr/NcrHomePage.vue'
+import AbnormalOwnerDetailView from '../views/AbnormalOwnerDetailView.vue'
 
 const routes = [
   {
@@ -116,6 +117,12 @@ const routes = [
     path: '/ncr-home',
     name: 'NcrHomePage',
     component: NcrHomePage
+  },
+  {
+    path: '/abnormal-owner-detail/:owner',
+    name: 'AbnormalOwnerDetail',
+    component: AbnormalOwnerDetailView,
+    props: true
   }
 ]
 
