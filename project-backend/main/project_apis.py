@@ -220,214 +220,42 @@ def get_task_stats():
             "completed_tasks": 0
         }
 
-# 3. 获取图表数据
-@router.get("/chart/data", response_model=ChartData)
-def get_chart_data():
-    """获取图表数据"""
+# 3. 获取项目统计信息（简化版本，避免与chart_router冲突）
+@router.get("/project/stats/simple")
+def get_simple_project_stats():
+    """获取简化的项目统计信息"""
     try:
-        # 检查project_tasks表是否存在
-        check_table_sql = "SHOW TABLES LIKE 'project_tasks'"
+        # 检查projects表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'projects'"
         table_exists = execute_query(check_table_sql)
         if not table_exists:
-            print("警告: project_tasks表不存在，返回模拟数据")
-            # 1. 项目类型分布（模拟数据，可根据实际表结构调整）
-            type_pie = [
-                {"value": 7, "name": "产品设计"},
-                {"value": 3, "name": "生产制造"},
-                {"value": 2, "name": "工程项目"},
-                {"value": 1, "name": "产品研发"},
-                {"value": 1, "name": "软件交付"}
-            ]
-            
-            # 2. 项目来源（模拟数据）
-            source_bar = [
-                {"name": "公开招标", "value": 1},
-                {"name": "广告营销", "value": 1},
-                {"name": "客户介绍", "value": 2},
-                {"name": "朋友介绍", "value": 1},
-                {"name": "销售自拓", "value": 9}
-            ]
-            
-            # 3. 项目经理负载（空数组）
-            load_bar = []
-            
-            # 4. 甘特图数据（空数组）
-            gantt_data = []
-            
+            print("警告: projects表不存在")
             return {
-                "type_pie": type_pie,
-                "source_bar": source_bar,
-                "load_bar": load_bar,
-                "gantt_data": gantt_data
-            }
-
-        # 检查必要字段是否存在
-        describe_sql = "DESCRIBE project_tasks"
-        columns_result = execute_query(describe_sql, fetch_all=True)
-        if not columns_result:
-            print("警告: 无法获取project_tasks表结构，返回模拟数据")
-            # 返回模拟数据
-            type_pie = [
-                {"value": 7, "name": "产品设计"},
-                {"value": 3, "name": "生产制造"},
-                {"value": 2, "name": "工程项目"},
-                {"value": 1, "name": "产品研发"},
-                {"value": 1, "name": "软件交付"}
-            ]
-            
-            source_bar = [
-                {"name": "公开招标", "value": 1},
-                {"name": "广告营销", "value": 1},
-                {"name": "客户介绍", "value": 2},
-                {"name": "朋友介绍", "value": 1},
-                {"name": "销售自拓", "value": 9}
-            ]
-            
-            load_bar = []
-            gantt_data = []
-            
-            return {
-                "type_pie": type_pie,
-                "source_bar": source_bar,
-                "load_bar": load_bar,
-                "gantt_data": gantt_data
+                "total_projects": 0,
+                "unstarted_projects": 0,
+                "ongoing_projects": 0,
+                "completed_projects": 0
             }
         
-        column_names = [col['Field'] for col in columns_result if 'Field' in col]
-        required_columns = ['project_manager', 'wbs_code', 'project_name', 'task_name', 'task_owner', 'task_status', 'planned_start_date', 'planned_end_date', 'progress']
-        missing_columns = [col for col in required_columns if col not in column_names]
+        # 查询总项目数
+        total_sql = "SELECT COUNT(*) as count FROM projects"
+        total_result = execute_query(total_sql)
+        total = total_result["count"] if total_result and "count" in total_result else 0
         
-        if missing_columns:
-            print(f"警告: project_tasks表缺少以下列: {missing_columns}")
-            # 返回模拟数据
-            type_pie = [
-                {"value": 7, "name": "产品设计"},
-                {"value": 3, "name": "生产制造"},
-                {"value": 2, "name": "工程项目"},
-                {"value": 1, "name": "产品研发"},
-                {"value": 1, "name": "软件交付"}
-            ]
-            
-            source_bar = [
-                {"name": "公开招标", "value": 1},
-                {"name": "广告营销", "value": 1},
-                {"name": "客户介绍", "value": 2},
-                {"name": "朋友介绍", "value": 1},
-                {"name": "销售自拓", "value": 9}
-            ]
-            
-            load_bar = []
-            gantt_data = []
-            
-            return {
-                "type_pie": type_pie,
-                "source_bar": source_bar,
-                "load_bar": load_bar,
-                "gantt_data": gantt_data
-            }
-
-        # 1. 项目类型分布（模拟数据，可根据实际表结构调整）
-        type_pie = [
-            {"value": 7, "name": "产品设计"},
-            {"value": 3, "name": "生产制造"},
-            {"value": 2, "name": "工程项目"},
-            {"value": 1, "name": "产品研发"},
-            {"value": 1, "name": "软件交付"}
-        ]
-        
-        # 2. 项目来源（模拟数据）
-        source_bar = [
-            {"name": "公开招标", "value": 1},
-            {"name": "广告营销", "value": 1},
-            {"name": "客户介绍", "value": 2},
-            {"name": "朋友介绍", "value": 1},
-            {"name": "销售自拓", "value": 9}
-        ]
-        
-        # 3. 项目经理负载（从数据库查询）
-        # 统计每个项目经理负责的项目数量（去重）
-        load_sql = """
-        SELECT project_manager, COUNT(DISTINCT project_name) as project_count
-        FROM project_tasks
-        WHERE project_manager IS NOT NULL
-        GROUP BY project_manager
-        """
-        load_data = execute_query(load_sql, fetch_all=True) or []
-        load_bar = [{"name": item["project_manager"], "value": item["project_count"]} for item in load_data if item and "project_manager" in item and "project_count" in item]
-        
-        # 4. 甘特图数据（从任务表查询）
-        gantt_sql = """
-        SELECT project_name as projectNo, project_name, wbs_code as wbsNo,
-               task_name as taskName, task_owner as owner,
-               CASE WHEN wbs_code REGEXP '^[0-9]+$' THEN '里程碑' ELSE '子任务' END as taskType,
-               '重要不紧急' as priority, task_status as status,
-               planned_start_date as planStart, planned_end_date as planEnd,
-               progress as progress
-        FROM project_tasks
-        LIMIT 10
-        """
-        raw_gantt_data = execute_query(gantt_sql, fetch_all=True) or []
-        
-        # 格式化甘特图数据以符合前端要求
-        gantt_data = []
-        for item in raw_gantt_data:
-            if not item:
-                continue
-                
-            progress_value = item.get("progress")
-            if hasattr(progress_value, 'quantize'):  # 如果是Decimal类型
-                progress_str = str(float(progress_value))
-            else:
-                progress_str = str(progress_value) if progress_value is not None else "0"
-            
-            formatted_item = {
-                "projectNo": item.get("projectNo", ""),
-                "project_name": item.get("project_name", ""),  # 保持原字段名用于前端显示
-                "wbsNo": item.get("wbsNo", ""),
-                "taskName": item.get("taskName", ""),
-                "owner": item.get("owner") or "",
-                "taskType": item.get("taskType", ""),
-                "priority": item.get("priority", ""),
-                "status": item.get("status", ""),
-                "planStart": str(item.get("planStart")) if item.get("planStart") else "",
-                "planEnd": str(item.get("planEnd")) if item.get("planEnd") else "",
-                "progress": progress_str.rstrip('0').rstrip('.') if '.' in progress_str else progress_str
-            }
-            gantt_data.append(formatted_item)
-        
+        # 返回简化数据
         return {
-            "type_pie": type_pie,
-            "source_bar": source_bar,
-            "load_bar": load_bar,
-            "gantt_data": gantt_data
+            "total_projects": total,
+            "unstarted_projects": 0,
+            "ongoing_projects": 0,
+            "completed_projects": 0
         }
     except Exception as e:
-        print(f"获取图表数据出错: {e}")
-        # 返回默认模拟数据
-        type_pie = [
-            {"value": 7, "name": "产品设计"},
-            {"value": 3, "name": "生产制造"},
-            {"value": 2, "name": "工程项目"},
-            {"value": 1, "name": "产品研发"},
-            {"value": 1, "name": "软件交付"}
-        ]
-        
-        source_bar = [
-            {"name": "公开招标", "value": 1},
-            {"name": "广告营销", "value": 1},
-            {"name": "客户介绍", "value": 2},
-            {"name": "朋友介绍", "value": 1},
-            {"name": "销售自拓", "value": 9}
-        ]
-        
-        load_bar = []
-        gantt_data = []
-        
+        print(f"获取简化项目统计信息出错: {e}")
         return {
-            "type_pie": type_pie,
-            "source_bar": source_bar,
-            "load_bar": load_bar,
-            "gantt_data": gantt_data
+            "total_projects": 0,
+            "unstarted_projects": 0,
+            "ongoing_projects": 0,
+            "completed_projects": 0
         }
 
 # 4. 获取项目详细数据并分类

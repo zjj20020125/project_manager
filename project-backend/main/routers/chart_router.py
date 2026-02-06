@@ -377,3 +377,87 @@ async def get_task_gantt_data(project_name: str = None):
         import traceback
         traceback.print_exc()
         return []
+
+# 12. 根据状态获取project_tasks表中的完整数据
+@router.get("/project-tasks/status/{status}")
+async def get_project_tasks_by_status(status: str):
+    """根据状态获取project_tasks表中的完整数据"""
+    try:
+        # 检查project_tasks表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'project_tasks'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            print("警告: project_tasks表不存在")
+            return []
+
+        # 检查必要字段是否存在
+        describe_sql = "DESCRIBE project_tasks"
+        columns_result = execute_query(describe_sql, fetch_all=True)
+        if not columns_result:
+            print("警告: 无法获取project_tasks表结构")
+            return []
+
+        column_names = [col['Field'] for col in columns_result if 'Field' in col]
+        required_columns = ['task_status']
+        missing_columns = [col for col in required_columns if col not in column_names]
+
+        if missing_columns:
+            print(f"警告: project_tasks表缺少以下列: {missing_columns}")
+            return []
+
+        # 根据状态查询project_tasks表中的完整数据
+        tasks_sql = """
+        SELECT *
+        FROM project_tasks
+        WHERE task_status = %s
+        ORDER BY planned_start_date ASC
+        """
+        
+        tasks_results = execute_query(tasks_sql, (status,), fetch_all=True) or []
+        
+        # 格式化返回数据
+        formatted_results = []
+        for result in tasks_results:
+            if result is not None:
+                # 处理日期字段
+                planned_start_date = result.get('planned_start_date')
+                planned_end_date = result.get('planned_end_date')
+                actual_start_date = result.get('actual_start_date')
+                actual_end_date = result.get('actual_end_date')
+                created_at = result.get('created_at')
+                updated_at = result.get('updated_at')
+                
+                # 处理进度字段
+                progress = result.get('progress')
+                if hasattr(progress, 'quantize'):  # 如果是Decimal类型
+                    progress_value = float(progress)
+                else:
+                    progress_value = float(progress) if progress is not None else 0.0
+                
+                formatted_item = {
+                    "task_id": result.get('task_id'),
+                    "project_id": result.get('project_id'),
+                    "project_name": result.get('project_name', ''),
+                    "project_manager": result.get('project_manager', ''),
+                    "wbs_code": result.get('wbs_code', ''),
+                    "task_name": result.get('task_name', ''),
+                    "task_owner": result.get('task_owner', ''),
+                    "task_status": result.get('task_status', ''),
+                    "planned_start_date": str(planned_start_date) if planned_start_date else '',
+                    "planned_end_date": str(planned_end_date) if planned_end_date else '',
+                    "actual_start_date": str(actual_start_date) if actual_start_date else '',
+                    "actual_end_date": str(actual_end_date) if actual_end_date else '',
+                    "progress": progress_value,
+                    "created_at": str(created_at) if created_at else '',
+                    "updated_at": str(updated_at) if updated_at else ''
+                }
+                formatted_results.append(formatted_item)
+
+        print(f"根据状态'{status}'返回project_tasks数据: {len(formatted_results)} 条")
+        return formatted_results
+        
+    except Exception as e:
+        print(f"根据状态获取project_tasks数据出错: {e}")
+        import traceback
+        traceback.print_exc()
+        return []

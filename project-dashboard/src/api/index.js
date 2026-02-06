@@ -181,6 +181,12 @@ export const projectApi = {
     return apiClient.get(`/v1/tasks-by-project-status/${encodedStatus}`);
   },
   
+  // 根据状态获取project_tasks表中的完整数据
+  getProjectTasksByStatus: (status) => {
+    const encodedStatus = encodeURIComponent(status);
+    return apiClient.get(`/v1/project-tasks/status/${encodedStatus}`);
+  },
+  
   // 根据项目ID或项目名称获取子任务数据
   getProjectSubtasks: (projectIdentifier) => {
     const encodedIdentifier = encodeURIComponent(projectIdentifier);
@@ -231,6 +237,12 @@ export const projectApi = {
   // 获取DQJD和WCZZ数据统计
   getDqjdWczzData: () => apiClient.get('/v1/dqjd-wczz-data'),
   
+  // 获取未评审状态下的负责人统计（前15名）
+  getUnreviewedResponsibilityStats: () => apiClient.get('/v1/ncr/unreviewed-responsibility'),
+  
+  // 获取未评审阶段责任人员分布统计（前15名）
+  getUnreviewedStageResponsibility: () => apiClient.get('/v1/ncr/unreviewed-stage-responsibility'),
+  
   // 导入项目数据
   importProjects: (formData, overwrite = false) => {
     const params = new URLSearchParams();
@@ -243,6 +255,11 @@ export const projectApi = {
         'Content-Type': 'multipart/form-data'
       }
     });
+  },
+  
+  // 更新项目信息
+  updateProjectInfo: (projectData) => {
+    return apiClient.put('/v1/projects/update', projectData);
   },
   
   // 导出项目数据

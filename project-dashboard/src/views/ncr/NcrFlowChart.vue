@@ -1,19 +1,20 @@
 <template>
   <div class="ncr-flow-chart-container">
-    <!-- 第一个容器：两个扇形图 -->
+    <!-- 第一个容器：柱状图和饼图 -->
     <el-row :gutter="20" margin-bottom="20px">
       <el-col :span="12">
-        <el-card shadow="hover" class="clickable-card" @click="goToStageDetail">
-          <div slot="header" class="card-header">NCR发生阶段分布</div>
-          <div ref="stagePieRef" class="chart-container"></div>
-        </el-card>
+          <el-card shadow="hover" class="clickable-card" @click="goToTypeDetail">
+            <div slot="header" class="card-header">NCR按类型/问题分类的分布统计</div>
+            <div ref="typePieRef" class="chart-container"></div>
+          </el-card>
       </el-col>
       <el-col :span="12">
-        <el-card shadow="hover" class="clickable-card" @click="goToTypeDetail">
-          <div slot="header" class="card-header">评审阶段责任人员分布（前五名）</div>
-          <div ref="typePieRef" class="chart-container"></div>
+        <el-card shadow="hover" class="clickable-card">
+          <div slot="header" class="card-header">未评审阶段责任人员分布（前十五名）</div>
+          <div ref="unreviewedStagePieRef" class="chart-container"></div>
         </el-card>
       </el-col>
+
     </el-row>
 
     <!-- 第二个容器：柱状图和未操作者统计 -->
@@ -162,7 +163,7 @@ export default {
     const router = useRouter();
     
     // ECharts实例引用
-    const stagePieRef = ref(null);  // 新增：阶段分布饼图引用
+    const unreviewedStagePieRef = ref(null);  // 未评审阶段责任人员分布扇形图引用
     const typePieRef = ref(null);
     const trendBarRef = ref(null);
     // 新增：DQJD图表和WCZZ列表引用
@@ -170,8 +171,11 @@ export default {
     const wczzListRef = ref(null);
     // 新增：责任分析图表引用
     const responsibilityChartRef = ref(null);
+    // 新增：未评审状态柱状图引用
+    const unreviewedBarRef = ref(null);
 
     // 数据状态
+    const unreviewedStageData = ref([]);  // 未评审阶段责任人员分布数据
     const ncrOwnerStats = ref([]);
     const ownerStatsLoading = ref(false);
     
@@ -183,9 +187,11 @@ export default {
     const wczzListData = ref([]);
     // 新增：责任分析数据
     const responsibilityData = ref([]);
+    // 新增：未评审状态数据
+    const unreviewedData = ref([]);
 
     // 图表实例对象
-    let stagePieChart = null;  // 新增：阶段分布饼图实例
+    let unreviewedStagePieChart = null;  // 未评审阶段责任人员分布扇形图实例
     let typePieChart = null;
     let trendBarChart = null;
     // 新增：DQJD和WCZZ图表实例
@@ -193,78 +199,10 @@ export default {
     let wczzChart = null;
     // 新增：责任分析图表实例
     let responsibilityChart = null;
+    // 新增：未评审状态柱状图实例
+    let unreviewedBarChart = null;
 
-    // 初始化NCR发生阶段分布饼图
-    const initStagePie = (data) => {
-      if (!stagePieRef.value) return;
 
-      // 确保之前的图表实例已被销毁
-      if (stagePieChart) {
-        try {
-          stagePieChart.dispose();
-        } catch (e) {
-          console.warn('Error disposing stagePieChart:', e);
-        }
-        stagePieChart = null;
-      }
-
-      stagePieChart = echarts.init(stagePieRef.value);
-
-      const option = {
-        tooltip: { 
-          trigger: 'item',
-          formatter: (params) => {
-            return `${params.name}: ${params.value} (${((params.percent || 0) / 100).toFixed(2) * 100}%)`;
-          }
-        },
-        grid: { left: '3%', right: '4%', bottom: '15%', top: '10%' },
-        legend: {
-          bottom: 10,
-          left: 'center',
-          itemWidth: 12,
-          itemHeight: 12
-        },
-        series: [
-          {
-            name: 'NCR发生阶段',
-            type: 'pie',
-            radius: ['40%', '70%'],
-            center: ['50%', '40%'],
-            data: data.map(item => ({
-              name: item.name,
-              value: item.value,
-              itemStyle: { 
-                color: getColorForStage(item.name) 
-              }
-            })),
-            label: { show: false },
-            labelLine: { show: false },
-            emphasis: {
-              itemStyle: {
-                shadowBlur: 10,
-                shadowOffsetX: 0,
-                shadowColor: 'rgba(0, 0, 0, 0.5)'
-              }
-            },
-            // 添加点击事件
-            selectedMode: 'single',
-            selectedOffset: 10
-          }
-        ]
-      };
-      
-      stagePieChart.setOption(option);
-      
-      // 添加点击事件监听
-      stagePieChart.on('click', (params) => {
-        if (params && params.name) {
-          router.push({
-            name: 'NcrStageDetail',
-            params: { stage: params.name }
-          });
-        }
-      });
-    };
 
     // 初始化评审阶段责任人员分布饼图
     const initTypePie = (data) => {
@@ -462,6 +400,80 @@ export default {
       wczzListData.value = sortedData;
     };
 
+    // 新增：初始化未评审阶段责任人员分布扇形图
+    const initUnreviewedStagePieChart = (data) => {
+      if (!unreviewedStagePieRef.value) return;
+
+      if (unreviewedStagePieChart) {
+        unreviewedStagePieChart.dispose();
+      }
+
+      unreviewedStagePieChart = echarts.init(unreviewedStagePieRef.value);
+
+      // 定义一组对比明显的颜色，确保相邻数据颜色不会太相近
+      const pieColors = [
+        '#FF6B6B', // 红色
+        '#4ECDC4', // 青绿色
+        '#45B7D1', // 蓝色
+        '#96CEB4', // 绿色
+        '#FFEAA7', // 黄色
+        '#DDA0DD', // 梅花色
+        '#98D8C8', // 薄荷绿
+        '#F7DC6F', // 浅黄色
+        '#BB8FCE', // 浅紫色
+        '#85C1E9', // 浅蓝色
+        '#5470c6', // 蓝色
+        '#91cc75', // 绿色
+        '#fac858', // 黄色
+        '#ee6666', // 红色
+        '#73c0de'  // 浅蓝色
+      ];
+
+      const option = {
+        tooltip: {
+          trigger: 'item',
+          formatter: '{a} <br/>{b}: {c} ({d}%)'
+        },
+        legend: {
+          orient: 'horizontal',
+          left: 'center',
+          bottom: 0,
+          itemGap: 5
+        },
+        series: [{
+          name: '责任人员分布',
+          type: 'pie',
+          radius: ['40%', '60%'],
+          center: ['50%', '40%'],
+          avoidLabelOverlap: false,
+          itemStyle: {
+            borderRadius: 10,
+            borderColor: '#fff',
+            borderWidth: 2,
+            color: function(params) {
+              // 循环使用预定义颜色
+              return pieColors[params.dataIndex % pieColors.length];
+            }
+          },
+          label: {
+            show: true,
+            formatter: '{b}: {c}',
+            minMargin: 5
+          },
+          emphasis: {
+            label: {
+              show: true,
+              fontSize: '16',
+              fontWeight: 'bold'
+            }
+          },
+          data: data
+        }]
+      };
+
+      unreviewedStagePieChart.setOption(option);
+    };
+
     // 新增：初始化责任分析饼图
     const initResponsibilityChart = (data) => {
       if (!responsibilityChartRef.value) return;
@@ -591,16 +603,49 @@ export default {
     // 获取NCR统计数据
     const fetchNcrData = async () => {
       try {
-        // 获取NCR发生阶段分布
-        const stageDistribution = await projectApi.getNcrStageDistribution();
-        if (stageDistribution) {
-          initStagePie(stageDistribution);
+        // 获取未评审阶段责任人员分布数据
+        try {
+          const unreviewedStageResponse = await projectApi.getUnreviewedStageResponsibility();
+          if (unreviewedStageResponse && Array.isArray(unreviewedStageResponse)) {
+            unreviewedStageData.value = unreviewedStageResponse;
+            // 初始化未评审阶段责任人员分布扇形图
+            initUnreviewedStagePieChart(unreviewedStageResponse);
+          }
+        } catch (error) {
+          console.error('获取未评审阶段责任人员分布数据失败:', error);
+          // 如果API调用失败，使用模拟数据
+          const mockData = [
+            { name: '张三', value: 15 },
+            { name: '李四', value: 12 },
+            { name: '王五', value: 10 },
+            { name: '赵六', value: 8 },
+            { name: '孙七', value: 6 },
+            { name: '周八', value: 5 },
+            { name: '吴九', value: 4 },
+            { name: '郑十', value: 3 }
+          ];
+          unreviewedStageData.value = mockData;
+          initUnreviewedStagePieChart(mockData);
         }
 
-        // 获取评审阶段责任人员分布
-        const responsibilityAnalysis = await projectApi.getResponsibilityAnalysis();
-        if (responsibilityAnalysis) {
-          initTypePie(responsibilityAnalysis);
+        // 获取NCR类型分布统计（用于饼图显示）
+        try {
+          const typeDistributionResponse = await projectApi.getNcrTypeDistribution();
+          if (typeDistributionResponse && Array.isArray(typeDistributionResponse)) {
+            // 初始化类型分布饼图
+            initTypePie(typeDistributionResponse);
+          }
+        } catch (error) {
+          console.error('获取NCR类型分布数据失败:', error);
+          // 如果API调用失败，使用模拟数据
+          const mockTypeData = [
+            { name: '产品质量', value: 25 },
+            { name: '工艺问题', value: 18 },
+            { name: '材料问题', value: 15 },
+            { name: '设备问题', value: 12 },
+            { name: '人员问题', value: 8 }
+          ];
+          initTypePie(mockTypeData);
         }
 
         // 获取NCR列表 - 从API获取真实数据
@@ -688,13 +733,15 @@ export default {
 
     // 处理窗口大小变化
     const handleResize = () => {
-      if (stagePieChart) stagePieChart.resize();  // 更新：添加stagePieChart
+      if (unreviewedStagePieChart) unreviewedStagePieChart.resize();
       if (typePieChart) typePieChart.resize();
       if (trendBarChart) trendBarChart.resize();
       // 新增：处理DQJD图表的resize
       if (dqjdChart) dqjdChart.resize();
       // 新增：处理责任分析图表的resize
       if (responsibilityChart) responsibilityChart.resize();
+      // 新增：处理未评审状态图表的resize
+      if (unreviewedBarChart) unreviewedBarChart.resize();
     };
 
     onMounted(() => {
@@ -715,9 +762,9 @@ export default {
     onUnmounted(() => {
       try {
         // 确保在组件卸载时销毁所有图表实例
-        if (stagePieChart) {  // 更新：添加stagePieChart销毁
-          stagePieChart.dispose();
-          stagePieChart = null;
+        if (unreviewedStagePieChart) {
+          unreviewedStagePieChart.dispose();
+          unreviewedStagePieChart = null;
         }
         if (typePieChart) {
           typePieChart.dispose();
@@ -737,6 +784,11 @@ export default {
           responsibilityChart.dispose();
           responsibilityChart = null;
         }
+        // 新增：销毁未评审状态图表实例
+        if (unreviewedBarChart) {
+          unreviewedBarChart.dispose();
+          unreviewedBarChart = null;
+        }
 
         window.removeEventListener('resize', handleResize);
       } catch (e) {
@@ -750,7 +802,7 @@ export default {
     });
 
     return {
-      stagePieRef,  // 更新：返回新的ref
+      unreviewedStagePieRef,  // 未评审阶段责任人员分布图表ref
       typePieRef,
       trendBarRef,
       // 新增：返回DQJD的ref
@@ -760,6 +812,10 @@ export default {
       ownerStatsLoading,
       ncrDetails,
       ncrDetailsLoading,
+      // 新增：返回未评审状态柱状图ref
+      unreviewedBarRef,
+      unreviewedData,
+      unreviewedStageData,
       getPriorityTagType,
       goToStageDetail,
       goToTypeDetail,

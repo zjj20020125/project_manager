@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+          xmlns:o="urn:schemas-microsoft-com:office:office"
+          xmlns:x="urn:schemas-microsoft-com:office:excel"
+          xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+          xmlns:html="http://www.w3.org/TR/REC-html40">
+  <Worksheet ss:Name="Sheet1">
+    <Table>
+      <Row>
+        <Cell><Data ss:Type="String">序号</Data></Cell>
+        <Cell><Data ss:Type="String">WBS</Data></Cell>
+        <Cell><Data ss:Type="String">任务</Data></Cell>
+        <Cell><Data ss:Type="String">里程碑</Data></Cell>
+        <Cell><Data ss:Type="String">计划开始</Data></Cell>
+        <Cell><Data ss:Type="String">计划结束</Data></Cell>
+        <Cell><Data ss:Type="String">实际开始</Data></Cell>
+        <Cell><Data ss:Type="String">实际结束</Data></Cell>
+        <Cell><Data ss:Type="String">计划周期(天)</Data></Cell>
+        <Cell><Data ss:Type="String">实际周期(天)</Data></Cell>
+        <Cell><Data ss:Type="String">滞后度(天)</Data></Cell>
+        <Cell><Data ss:Type="String">进度</Data></Cell>
+        <Cell><Data ss:Type="String">负责人</Data></Cell>
+        <Cell><Data ss:Type="String">滞后原因</Data></Cell>
+      </Row>
+      <Row>
+        <Cell><Data ss:Type="Number">1</Data></Cell>
+        <Cell><Data ss:Type="String">1</Data></Cell>
+        <Cell><Data ss:Type="String">0100项目策划阶段</Data></Cell>
+        <Cell><Data ss:Type="String"></Data></Cell>
+        <Cell><Data ss:Type="String">2025-12-12</Data></Cell>
+        <Cell><Data ss:Type="String">2025-12-12</Data></Cell>
+        <Cell><Data ss:Type="String">2025-12-12</Data></Cell>
+        <Cell><Data ss:Type="String">2025-12-12</Data></Cell>
+        <Cell><Data ss:Type="Number">1</Data></Cell>
+        <Cell><Data ss:Type="Number">1</Data></Cell>
+        <Cell><Data ss:Type="String"></Data></Cell>
+        <Cell><Data ss:Type="String">100%</Data></Cell>
+        <Cell><Data ss:Type="String">张三</Data></Cell>
+        <Cell><Data ss:Type="String"></Data></Cell>
+      </Row>
+      <Row>
+        <Cell><Data ss:Type="Number">2</Data></Cell>
+        <Cell><Data ss:Type="String">1.1</Data></Cell>
+        <Cell><Data ss:Type="String">0101需求分析</Data></Cell>
+        <Cell><Data ss:Type="String"></Data></Cell>
+        <Cell><Data ss:Type="String">2025-12-12</Data></Cell>
+        <Cell><Data ss:Type="String">2025-12-15</Data></Cell>
+        <Cell><Data ss:Type="String">2025-12-12</Data></Cell>
+        <Cell><Data ss:Type="String">2025-12-14</Data></Cell>
+        <Cell><Data ss:Type="Number">4</Data></Cell>
+        <Cell><Data ss:Type="Number">3</Data></Cell>
+        <Cell><Data ss:Type="String"></Data></Cell>
+        <Cell><Data ss:Type="String">100%</Data></Cell>
+        <Cell><Data ss:Type="String">李四</Data></Cell>
+        <Cell><Data ss:Type="String"></Data></Cell>
+      </Row>
+      <Row>
+        <Cell><Data ss:Type="Number">3</Data></Cell>
+        <Cell><Data ss:Type="String">1.2</Data></Cell>
+        <Cell><Data ss:Type="String">0102技术方案设计</Data></Cell>
+        <Cell><Data ss:Type="String"></Data></Cell>
+        <Cell><Data ss:Type="String">2025-12-15</Data></Cell>
+        <Cell><Data ss:Type="String">2025-12-20</Data></Cell>
+        <Cell><Data ss:Type="String">2025-12-15</Data></Cell>
+        <Cell><Data ss:Type="String">2025-12-19</Data></Cell>
+        <Cell><Data ss:Type="Number">6</Data></Cell>
+        <Cell><Data ss:Type="Number">5</Data></Cell>
+        <Cell><Data ss:Type="String"></Data></Cell>
+        <Cell><Data ss:Type="String">100%</Data></Cell>
+        <Cell><Data ss:Type="String">王五</Data></Cell>
+        <Cell><Data ss:Type="String"></Data></Cell>
+      </Row>
+    </Table>
+  </Worksheet>
+</Workbook>

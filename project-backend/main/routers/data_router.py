@@ -3,13 +3,16 @@
 包含数据导入导出相关的API接口
 """
 
+import sys
+import os
+# 添加项目根目录到模块搜索路径
+sys.path.append(os.path.dirname(os.path.abspath(__file__)) + "/..")
+
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from typing import List, Dict
 import pandas as pd
 import io
 import re
-import os
-import sys
 import tempfile
 from datetime import datetime
 
@@ -22,7 +25,7 @@ router = APIRouter(prefix="/v1", tags=["数据管理"])
 # 27. 导入项目数据
 @router.post("/projects/import")
 async def import_projects(file: UploadFile = File(...), overwrite: bool = False):
-    """导入项目数据"""
+    """导入项目数据 - 使用统一的处理逻辑"""
     try:
         # 检查文件类型
         if not file.filename.lower().endswith((".xlsx", ".xls", ".csv")):
@@ -40,7 +43,6 @@ async def import_projects(file: UploadFile = File(...), overwrite: bool = False)
             project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
             datadeal_module_path = os.path.join(project_root, 'datadeal')
             print(f"尝试导入路径: {datadeal_module_path}")
-            print(f"当前sys.path: {sys.path}")
             
             if datadeal_module_path not in sys.path:
                 sys.path.insert(0, datadeal_module_path)
@@ -52,36 +54,42 @@ async def import_projects(file: UploadFile = File(...), overwrite: bool = False)
                 print("成功导入simple_datadeal模块")
             except ImportError as e:
                 print(f"导入simple_datadeal模块失败: {e}")
-                # 尝试直接导入
-                try:
-                    sys.path.append(datadeal_module_path)
-                    import simple_datadeal
-                    print("通过追加路径成功导入simple_datadeal模块")
-                except ImportError as e2:
-                    print(f"通过追加路径仍然导入失败: {e2}")
-                    raise HTTPException(status_code=500, detail=f"无法导入数据处理模块: {str(e2)}")
+                raise HTTPException(status_code=500, detail=f"无法导入数据处理模块: {str(e)}")
             
             # 保存当前工作目录并切换到临时文件所在目录
             original_cwd = os.getcwd()
             temp_dir = os.path.dirname(tmp_file_path)
             os.chdir(temp_dir)
             print(f"切换工作目录到: {temp_dir}")
-            print(f"临时文件路径: {tmp_file_path}")
-            print(f"文件是否存在: {os.path.exists(tmp_file_path)}")
             
             try:
-                # 调用datadeal的核心处理逻辑
-                print("开始调用process_single_file函数...")
-                result = simple_datadeal.process_single_file(tmp_file_path, overwrite=overwrite)
+                # 调用datadeal的核心处理逻辑，传递原始文件名
+                print(f"开始调用process_single_file函数，原始文件名: {file.filename}")
+                result = simple_datadeal.process_single_file(tmp_file_path, overwrite=overwrite, original_filename=file.filename)
                 print(f"处理结果: {result}")
                 
                 # 检查处理结果
-                if not result or not result.get('success', False):
-                    error_msg = result.get('message', '未知错误') if result else '处理函数返回空结果'
+                if not result:
+                    raise HTTPException(status_code=500, detail="处理函数返回空结果")
+                
+                # 特殊处理查重情况
+                existing_count = result.get('existing_count', 0)
+                if existing_count > 0 and not overwrite:
+                    # 当存在重复数据且未要求覆盖时，返回特殊的响应
+                    return {
+                        "message": f"项目已存在 {existing_count} 条任务数据",
+                        "existing_count": existing_count,
+                        "processed_count": 0,
+                        "needs_confirmation": True,  # 标记需要用户确认
+                        "details": result
+                    }
+                
+                # 正常处理结果
+                if not result.get('success', False):
+                    error_msg = result.get('message', '未知错误')
                     raise HTTPException(status_code=500, detail=f"数据处理失败: {error_msg}")
                 
                 # 获取重复数据统计
-                existing_count = result.get('existing_count', 0) if 'existing_count' in result else 0
                 processed_count = result.get('data_rows', 0) if 'data_rows' in result else 0
                 
                 return {
@@ -114,148 +122,6 @@ async def import_projects(file: UploadFile = File(...), overwrite: bool = False)
                 os.unlink(tmp_file_path)
                 print(f"已清理临时文件: {tmp_file_path}")
         
-        # 如果到达这里，说明导入成功，直接返回
-        return {"message": f"文件 {file.filename} 导入完成"}
-
-        # 注意：以下代码已被注释，因为我们现在使用datadeal模块处理所有逻辑
-        # 保留这部分代码是为了参考，实际导入逻辑在simple_datadeal.process_single_file中实现
-        
-        # # 从文件名解析项目名和项目经理
-        # filename = file.filename
-        # name_without_ext = os.path.splitext(filename)[0]
-        # 
-        # # 尝试匹配 "xxx(项目名)-项目经理姓名" 格式
-        # match = re.match(r'.*\((.+)\)-(.+)', name_without_ext)
-        # 
-        # if match:
-        #     project_name = match.group(1).strip()
-        #     manager_name = match.group(2).strip()
-        # else:
-        #     # 如果不符合上述格式，尝试匹配 "项目名-项目经理姓名" 格式
-        #     last_dash_index = name_without_ext.rfind('-')
-        #     if last_dash_index != -1:
-        #         project_name = name_without_ext[:last_dash_index].strip()
-        #         manager_name = name_without_ext[last_dash_index+1:].strip()
-        #     else:
-        #         # 如果都不符合，返回整个名字作为项目名，项目经理为未知
-        #         project_name = name_without_ext
-        #         manager_name = "未知"
-        
-        # 遍历数据行，插入任务数据
-        for i, row in df.iterrows():
-            task_name = None
-            wbs_code = None
-            task_owner = None
-            planned_start = None
-            planned_end = None
-            actual_start = None
-            actual_end = None
-            progress = None
-            lag_days = None
-            task_status = None
-
-            # 遍历行中的每一列，查找匹配的字段
-            for col_name, col_value in row.items():
-                col_name_clean = col_name.strip().replace('\u3000', '').replace(' ', '')  # 去除全角空格和普通空格
-                col_name_lower = col_name_clean.lower()
-
-                if any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in task_name_cols]) and not task_name:
-                    task_name = str(col_value) if pd.notna(col_value) else None
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in wbs_code_cols]) and not wbs_code:
-                    wbs_code = str(col_value) if pd.notna(col_value) else None
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in task_owner_cols]) and not task_owner:
-                    task_owner = str(col_value) if pd.notna(col_value) else None
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in planned_start_cols]) and not planned_start:
-                    if pd.notna(col_value):
-                        try:
-                            planned_start = pd.to_datetime(col_value).date()
-                        except:
-                            pass
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in planned_end_cols]) and not planned_end:
-                    if pd.notna(col_value):
-                        try:
-                            planned_end = pd.to_datetime(col_value).date()
-                        except:
-                            pass
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in actual_start_cols]) and not actual_start:
-                    if pd.notna(col_value):
-                        try:
-                            actual_start = pd.to_datetime(col_value).date()
-                        except:
-                            pass
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in actual_end_cols]) and not actual_end:
-                    if pd.notna(col_value):
-                        try:
-                            actual_end = pd.to_datetime(col_value).date()
-                        except:
-                            pass
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in progress_cols]) and not progress:
-                    if pd.notna(col_value):
-                        try:
-                            # 处理百分比格式
-                            val_str = str(col_value).replace('%', '')
-                            if val_str.replace('.', '').replace('-', '').isdigit():
-                                progress = float(val_str)
-                            else:
-                                progress = None
-                        except:
-                            progress = None
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in lag_days_cols]) and not lag_days:
-                    if pd.notna(col_value):
-                        try:
-                            lag_days = float(str(col_value)) if str(col_value).replace('-', '').replace('.', '').isdigit() else None
-                        except:
-                            lag_days = None
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in task_status_cols]):
-                    task_status = str(col_value) if pd.notna(col_value) else None
-
-            # 只有当至少有任务名称时才插入记录
-            if task_name and task_name.strip() != '':
-                # 如果task_status未明确指定或为空值，则根据条件计算
-                if not task_status or task_status == 'None' or task_status == '' or task_status.lower() == 'none':
-                    task_status = determine_task_status_import(planned_start, planned_end, actual_start, actual_end, lag_days)
-                else:
-                    # 标准化状态值
-                    if task_status in ['完成', '已完成', 'Finish', 'Finished']:
-                        task_status = '完成'
-                    elif task_status in ['进行中', '执行中', 'In Progress', 'Ongoing']:
-                        task_status = '进行中'
-                    elif task_status in ['未开始', 'Pending', 'Not Started']:
-                        task_status = '未开始'
-                    elif task_status in ['延期完成', 'Delayed Finish']:
-                        task_status = '延期完成'
-                    elif task_status in ['异常', 'Exception', 'Abnormal']:
-                        task_status = '异常'
-                    else:
-                        # 再次使用函数判断状态
-                        task_status = determine_task_status_import(planned_start, planned_end, actual_start, actual_end, lag_days)
-
-                # 根据实际的数据库结构插入任务数据，包括project_id
-                insert_task_sql = """
-                INSERT INTO project_tasks (
-                    project_id, project_name, project_manager, task_name, wbs_code, 
-                    planned_start_date, planned_end_date, actual_start_date, actual_end_date,
-                    progress, task_owner, task_status
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """
-
-                try:
-                    result = execute_query(insert_task_sql, (
-                        project_id, project_name, manager_name, task_name, wbs_code,
-                        planned_start, planned_end, actual_start, actual_end,
-                        progress, task_owner, task_status
-                    ), fetch_one=False)
-                    if result is not None:  # 检查插入是否成功
-                        inserted_count += 1
-                except Exception as e:
-                    print(f"    插入任务 '{task_name}' 时出错: {e}")
-
-        if inserted_count > 0:
-            print(f"成功插入 {inserted_count} 个任务到项目 '{project_name}' (ID: {project_id})")
-        else:
-            print(f"项目 '{project_name}' 没有找到有效的任务数据或插入失败")
-        
-        return {"message": f"成功导入 {inserted_count} 条任务数据到项目 '{project_name}'"}
     except HTTPException:
         raise
     except Exception as e:

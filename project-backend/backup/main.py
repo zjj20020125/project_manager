@@ -2490,6 +2490,76 @@ async def get_dqjd_wczz_data():
         return {"dqjdStats": [], "wczzStats": [], "tableData": []}
 
 
+# 28. 获取未评审状态下的负责人统计（用于展示dqjd为'3-未评审'的记录中wczz字段的人员统计，显示前15名）
+@app.get(f"{API_PREFIX}/ncr/unreviewed-responsibility", response_model=List[dict])
+def get_unreviewed_responsibility_stats():
+    try:
+        # 检查jgjncr_copy表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'jgjncr_copy'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            print("警告: jgjncr_copy表不存在")
+            return []
+        
+        # 检查必要字段是否存在
+        describe_sql = "DESCRIBE jgjncr_copy"
+        columns_result = execute_query(describe_sql, fetch_all=True)
+        if not columns_result:
+            print("警告: 无法获取jgjncr_copy表结构")
+            return []
+        
+        column_names = [col['Field'] for col in columns_result if 'Field' in col]
+        
+        # 检查dqjd和wczz字段是否存在
+        if 'dqjd' not in column_names or 'wczz' not in column_names:
+            print("警告: jgjncr_copy表缺少dqjd或wczz字段")
+            return []
+        
+        # 查询dqjd为'3-未评审'的记录中wczz字段的统计
+        unreviewed_sql = """
+        SELECT wczz
+        FROM jgjncr_copy
+        WHERE dqjd = '3-未评审' AND wczz IS NOT NULL AND TRIM(wczz) != ''
+        """
+        
+        wczz_results = execute_query(unreviewed_sql, fetch_all=True) or []
+        
+        # 统计每个人员姓名出现的次数（先拆分wczz字段中的姓名）
+        name_count = {}
+        for record in wczz_results:
+            if record and record.get('wczz'):
+                wczz_value = record['wczz']
+                # 按多种分隔符分割姓名：逗号、中文逗号、分号、中文分号、顿号、加号
+                import re
+                names = re.split(r'[,,，,;,；,、,+]', str(wczz_value))
+                for name in names:
+                    name = name.strip()  # 去除空白字符
+                    if name:  # 确保姓名不为空
+                        if name in name_count:
+                            name_count[name] += 1
+                        else:
+                            name_count[name] = 1
+        
+        # 转换为数组格式
+        formatted_results = []
+        for name, count in name_count.items():
+            formatted_results.append({
+                "name": name,
+                "value": count
+            })
+        
+        # 按数量降序排列
+        formatted_results.sort(key=lambda x: x['value'], reverse=True)
+        
+        # 只返回前15名
+        return formatted_results[:15]
+    except Exception as e:
+        print(f"获取未评审责任人统计出错: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+
 # 27. 导入项目数据
 @app.post(f"{API_PREFIX}/projects/import")
 async def import_projects(file: UploadFile = File(...)):

@@ -25,7 +25,7 @@
       <el-card shadow="hover" v-if="projectData">
         <template #header>
           <div class="card-header">
-            <span style="font-size: 18px; font-weight: bold;">{{ projectData.project_name }}</span>
+            <span style="font-size: 18px; font-weight: bold;">{{ getStatusDisplayName(projectData.status) }}项目详情</span>
           </div>
         </template>
 
@@ -40,15 +40,15 @@
           </el-descriptions-item>
           <el-descriptions-item label="状态">
             <el-tag :type="getStatusTagType(projectData.status)">
-              {{ projectData.status }}
+              {{ getStatusDisplayName(projectData.status) }}
             </el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="计划开始时间">{{ projectData.planned_start_date }}</el-descriptions-item>
-          <el-descriptions-item label="计划结束时间">{{ projectData.planned_end_date }}</el-descriptions-item>
-          <el-descriptions-item label="实际开始时间">{{ projectData.actual_start_date }}</el-descriptions-item>
-          <el-descriptions-item label="实际结束时间">{{ projectData.actual_end_date }}</el-descriptions-item>
-          <el-descriptions-item label="创建时间">{{ projectData.created_at }}</el-descriptions-item>
-          <el-descriptions-item label="更新时间">{{ projectData.updated_at }}</el-descriptions-item>
+          <el-descriptions-item label="计划开始时间">{{ formatDate(projectData.planned_start_date) }}</el-descriptions-item>
+          <el-descriptions-item label="计划结束时间">{{ formatDate(projectData.planned_end_date) }}</el-descriptions-item>
+          <el-descriptions-item label="实际开始时间">{{ formatDate(projectData.actual_start_date) }}</el-descriptions-item>
+          <el-descriptions-item label="实际结束时间">{{ formatDate(projectData.actual_end_date) }}</el-descriptions-item>
+          <el-descriptions-item label="创建时间">{{ formatDate(projectData.created_at) }}</el-descriptions-item>
+          <el-descriptions-item label="更新时间">{{ formatDate(projectData.updated_at) }}</el-descriptions-item>
         </el-descriptions>
 
         <!-- 项目描述 -->
@@ -64,12 +64,115 @@
           <el-text tag="ins">加载中...</el-text>
         </div>
       </el-card>
+
+      <!-- 子任务详情表格 -->
+      <el-card shadow="hover" style="margin-top: 20px;" v-if="subtasksData.length > 0">
+        <template #header>
+          <div class="card-header">
+            <span style="font-size: 18px; font-weight: bold;">{{ getStatusDisplayName(currentStatus) }}子任务详情</span>
+            <el-button 
+              style="float: right; padding: 3px 0" 
+              type="text"
+              @click="refreshSubtasks"
+              :loading="subtasksLoading"
+            >
+              刷新
+            </el-button>
+          </div>
+        </template>
+
+        <!-- 子任务统计卡片 -->
+        <el-row :gutter="20" style="margin-bottom: 20px;">
+          <el-col :span="6">
+            <el-card class="stat-card">
+              <div class="stat-content">
+                <div class="stat-title">总任务数</div>
+                <div class="stat-value">{{ subtaskStats.total }}</div>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :span="6">
+            <el-card class="stat-card">
+              <div class="stat-content">
+                <div class="stat-title">进行中</div>
+                <div class="stat-value" style="color: #409EFF;">{{ subtaskStats.ongoing }}</div>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :span="6">
+            <el-card class="stat-card">
+              <div class="stat-content">
+                <div class="stat-title">已完成</div>
+                <div class="stat-value" style="color: #67C23A;">{{ subtaskStats.completed }}</div>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :span="6">
+            <el-card class="stat-card">
+              <div class="stat-content">
+                <div class="stat-title">未开始</div>
+                <div class="stat-value" style="color: #E6A23C;">{{ subtaskStats.notStarted }}</div>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
+
+        <!-- 子任务表格 -->
+        <el-table 
+          :data="subtasksData" 
+          style="width: 100%" 
+          v-loading="subtasksLoading"
+          stripe
+          border
+        >
+          <el-table-column prop="task_name" label="任务名称" min-width="150"></el-table-column>
+          <el-table-column prop="assignee" label="负责人" width="120"></el-table-column>
+          <el-table-column prop="status" label="状态" width="120">
+            <template #default="scope">
+              <el-tag :type="getSubtaskStatusTagType(scope.row.status)">
+                {{ getSubtaskStatusDisplayName(scope.row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="progress" label="进度" width="120">
+            <template #default="scope">
+              <el-progress 
+                :percentage="scope.row.progress" 
+                :stroke-width="10"
+                :color="getProgressColor(scope.row.progress)"
+              ></el-progress>
+            </template>
+          </el-table-column>
+          <el-table-column prop="start_date" label="开始时间" width="120">
+            <template #default="scope">
+              {{ formatDate(scope.row.start_date) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="end_date" label="结束时间" width="120">
+            <template #default="scope">
+              {{ formatDate(scope.row.end_date) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="created_at" label="创建时间" width="120">
+            <template #default="scope">
+              {{ formatDate(scope.row.created_at) }}
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+
+      <!-- 无子任务数据提示 -->
+      <el-card shadow="hover" style="margin-top: 20px;" v-else>
+        <div style="text-align: center; padding: 40px;">
+          <el-empty description="暂无子任务数据"></el-empty>
+        </div>
+      </el-card>
     </el-main>
   </el-container>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElContainer, ElMain, ElCard, ElDescriptions, ElDescriptionsItem, ElTag, ElButton, ElText } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
@@ -84,6 +187,17 @@ const currentTime = ref('')
 
 // 项目数据状态
 const projectData = ref(null)
+
+// 子任务数据状态
+const subtasksData = ref([])
+const subtasksLoading = ref(false)
+const currentStatus = ref('')
+const subtaskStats = ref({
+  total: 0,
+  ongoing: 0,
+  completed: 0,
+  notStarted: 0
+})
 
 // 更新当前时间
 const updateTime = () => {
@@ -131,49 +245,214 @@ const getStatusTagType = (status) => {
   }
 }
 
+// 获取状态显示名称
+const getStatusDisplayName = (status) => {
+  switch (status) {
+    case 'not_started':
+      return '未开始'
+    case 'ongoing':
+      return '进行中'
+    case 'completed':
+      return '已结项'
+    case 'total':
+      return '全部'
+    default:
+      return status || '未知状态'
+  }
+}
+
+// 格式化日期显示
+const formatDate = (dateValue) => {
+  if (!dateValue || dateValue === '-' || dateValue === 'None') {
+    return '-'
+  }
+  
+  try {
+    // 如果已经是字符串格式的日期
+    if (typeof dateValue === 'string') {
+      // 检查是否为有效日期字符串
+      if (dateValue.match(/^\d{4}-\d{2}-\d{2}/)) {
+        return dateValue
+      }
+      // 尝试解析其他格式
+      const dateObj = new Date(dateValue)
+      if (!isNaN(dateObj.getTime())) {
+        return dateObj.toISOString().split('T')[0]
+      }
+    }
+    
+    // 如果是Date对象
+    if (dateValue instanceof Date) {
+      return dateValue.toISOString().split('T')[0]
+    }
+    
+    return String(dateValue)
+  } catch (error) {
+    console.error('日期格式化错误:', error)
+    return String(dateValue)
+  }
+}
+
 // 获取项目详情
 const fetchProjectDetail = async () => {
   try {
     // 从路由参数获取状态
-    const status = route.params.status
+    const status = route.params.status || route.query.status
+    console.log('获取项目状态参数:', status)
+    
     if (!status) {
       console.error('未找到项目状态参数')
+      projectData.value = {
+        project_name: '参数错误',
+        project_manager: '系统',
+        category: '未知',
+        status: 'unknown',
+        planned_start_date: '-',
+        planned_end_date: '-',
+        actual_start_date: '-',
+        actual_end_date: '-',
+        created_at: '-',
+        updated_at: '-'
+      }
       return
     }
 
     // 获取所有项目详情
+    console.log('开始获取项目详情数据...')
     const response = await projectApi.getProjectsDetail()
-    if (response && response.length > 0) {
+    console.log('获取到的项目详情数据:', response)
+    
+    if (response && Array.isArray(response) && response.length > 0) {
       // 根据状态筛选项目
-      const filteredProjects = response.filter(project => {
-        // 根据项目状态进行筛选
-        if (status === 'not_started') {
-          // 未开始：计划开始日期大于当前日期
-          return project.planned_start_date && new Date(project.planned_start_date) > new Date()
-        } else if (status === 'ongoing') {
-          // 进行中：当前日期在计划开始和结束之间
+      let filteredProjects = []
+      
+      if (status === 'total') {
+        // 总览：显示所有项目
+        filteredProjects = [...response]
+      } else {
+        // 根据状态筛选
+        filteredProjects = response.filter(project => {
+          if (!project || typeof project !== 'object') return false
+          
+          // 统一处理日期
+          const plannedStartDate = project.planned_start_date
+          const plannedEndDate = project.planned_end_date
+          const actualEndDate = project.actual_end_date
+          
+          // 转换日期为Date对象
+          let startDateObj = null
+          let endDateObj = null
+          let actualEndDateObj = null
+          
+          if (plannedStartDate) {
+            startDateObj = new Date(plannedStartDate)
+          }
+          if (plannedEndDate) {
+            endDateObj = new Date(plannedEndDate)
+          }
+          if (actualEndDate) {
+            actualEndDateObj = new Date(actualEndDate)
+          }
+          
           const currentDate = new Date()
-          const startDate = project.planned_start_date ? new Date(project.planned_start_date) : null
-          const endDate = project.planned_end_date ? new Date(project.planned_end_date) : null
-          return startDate && endDate && currentDate >= startDate && currentDate <= endDate
-        } else if (status === 'completed') {
-          // 已结项：实际结束日期早于当前日期
-          return project.actual_end_date && new Date(project.actual_end_date) < new Date()
-        } else {
-          // total 或其他情况，返回所有项目
-          return true
-        }
-      })
+          
+          // 根据不同状态进行筛选
+          switch (status) {
+            case 'not_started':
+              // 未开始：计划开始日期大于当前日期
+              return startDateObj && startDateObj > currentDate
+            
+            case 'ongoing':
+              // 进行中：当前日期在计划开始和结束之间
+              return startDateObj && endDateObj && 
+                     currentDate >= startDateObj && 
+                     currentDate <= endDateObj &&
+                     (!actualEndDateObj || actualEndDateObj >= currentDate)
+            
+            case 'completed':
+              // 已结项：实际结束日期早于当前日期，或者计划结束日期早于当前日期且无实际结束日期
+              return (actualEndDateObj && actualEndDateObj < currentDate) ||
+                     (!actualEndDateObj && endDateObj && endDateObj < currentDate)
+            
+            default:
+              return false
+          }
+        })
+      }
 
-      // 如果有筛选结果，取第一个项目作为示例
+      console.log(`筛选后的项目数量: ${filteredProjects.length}`)
+      console.log('筛选后的项目列表:', filteredProjects)
+
+      // 如果有筛选结果，设置项目数据
       if (filteredProjects.length > 0) {
-        projectData.value = filteredProjects[0]
+        // 取第一个项目作为展示
+        projectData.value = {
+          ...filteredProjects[0],
+          status: status,
+          category: getStatusDisplayName(status)
+        }
+        console.log('设置的项目数据:', projectData.value)
+      } else {
+        console.log('未找到符合条件的项目')
+        // 如果没有找到匹配的项目，显示提示信息
+        projectData.value = {
+          project_name: `暂无${getStatusDisplayName(status)}的项目`,
+          project_manager: '系统',
+          category: getStatusDisplayName(status),
+          status: status,
+          planned_start_date: '-',
+          planned_end_date: '-',
+          actual_start_date: '-',
+          actual_end_date: '-',
+          created_at: '-',
+          updated_at: '-'
+        }
+      }
+    } else {
+      console.log('未获取到项目数据或数据格式错误')
+      // 如果没有获取到数据，显示默认信息
+      projectData.value = {
+        project_name: '暂无项目数据',
+        project_manager: '系统',
+        category: getStatusDisplayName(status),
+        status: status,
+        planned_start_date: '-',
+        planned_end_date: '-',
+        actual_start_date: '-',
+        actual_end_date: '-',
+        created_at: '-',
+        updated_at: '-'
       }
     }
   } catch (error) {
     console.error('获取项目详情失败:', error)
+    // 错误处理，显示错误信息
+    const status = route.params.status || route.query.status || 'unknown'
+    projectData.value = {
+      project_name: '数据加载失败',
+      project_manager: '系统',
+      category: getStatusDisplayName(status),
+      status: status,
+      planned_start_date: '-',
+      planned_end_date: '-',
+      actual_start_date: '-',
+      actual_end_date: '-',
+      created_at: '-',
+      updated_at: '-'
+    }
   }
 }
+
+// 监听路由参数变化
+watch(
+  () => route.params.status,
+  async (newStatus, oldStatus) => {
+    if (newStatus !== oldStatus) {
+      console.log('路由参数变化，重新获取数据:', newStatus)
+      await fetchProjectDetail()
+    }
+  }
+)
 
 // 返回上一页
 const goBack = () => {
@@ -209,6 +488,33 @@ onUnmounted(() => {
 }
 .card-value {
   font-size: 24px;
+  font-weight: 700;
+  color: #333;
+}
+
+.stat-card {
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stat-content {
+  padding: 10px 0;
+}
+
+.stat-title {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.stat-value {
+  font-size: 28px;
   font-weight: 700;
   color: #333;
 }

@@ -69,6 +69,10 @@ const handleMenuSelect = (index) => {
   if (index === '1') {
     router.push('/home')  // 跳转到项目管理首页
   } else {
+    // 如果已经在NCR管理页面，不需要重复跳转
+    if (router.currentRoute.value.name !== 'NcrHomePage') {
+      router.push('/ncr-home')
+    }
     currentView.value = 'ncr'
     activeMenu.value = '2'
   }

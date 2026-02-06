@@ -20,13 +20,13 @@ SERVER_HOST = config.config.SERVER_HOST
 SERVER_PORT = config.config.SERVER_PORT
 
 # 导入各个功能模块
-from project_apis import router as project_router
-from ncr_apis import router as ncr_router
-from gantt_api import router as gantt_router
-from routers.task_router import router as task_router
-from routers.chart_router import router as chart_router
-from routers.project_router import router as project_detail_router
-from routers.data_router import router as data_router
+from main.project_apis import router as project_router
+from main.ncr_apis import router as ncr_router
+from main.gantt_api import router as gantt_router
+from main.routers.task_router import router as task_router
+from main.routers.chart_router import router as chart_router
+from main.routers.project_router import router as project_detail_router
+from main.routers.data_router import router as data_router
 
 # 导入服务层（用于未来扩展）
 from services.project_service import ProjectService
@@ -58,9 +58,10 @@ app.include_router(project_router)
 app.include_router(ncr_router)
 app.include_router(gantt_router)
 app.include_router(task_router)
-app.include_router(chart_router)
 app.include_router(project_detail_router)
 app.include_router(data_router)
+# 注意：chart_router放在最后，避免路由冲突
+app.include_router(chart_router)
 
 # 健康检查端点
 @app.get("/")

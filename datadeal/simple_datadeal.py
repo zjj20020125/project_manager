@@ -132,39 +132,48 @@ def determine_task_status(planned_start, planned_end, actual_start, actual_end, 
     # 默认为异常
     return "异常"
 
-def insert_tasks_to_db(project_id, project_name, manager_name, excel_data):
+def insert_tasks_to_db(project_id, project_name, manager_name, excel_data, overwrite=False):
     """将任务信息插入到project_tasks表"""
     if not excel_data:
-        return False
+        return False, 0  # 返回(成功状态, 现有数据条数)
     
     connection = connect_to_database()
     if not connection:
-        return False
+        return False, 0
     
     cursor = connection.cursor()
     try:
         # 检查该项目是否已经有任务数据
         check_sql = "SELECT COUNT(*) FROM project_tasks WHERE project_name = %s AND project_id = %s"
         cursor.execute(check_sql, (project_name, project_id))
-        count = cursor.fetchone()[0]
+        existing_count = cursor.fetchone()[0]
         
-        if count > 0:
-            print(f"项目 '{project_name}' (ID: {project_id}) 已有 {count} 条任务数据，跳过重复导入")
-            return True  # 返回True表示不需要导入，但操作成功
+        if existing_count > 0 and not overwrite:
+            print(f"项目 '{project_name}' (ID: {project_id}) 已有 {existing_count} 条任务数据，需要确认是否覆盖")
+            # 返回现有数据条数，让前端决定是否覆盖
+            return False, existing_count
+        elif existing_count > 0 and overwrite:
+            # 如果需要覆盖，先清空现有数据
+            delete_sql = "DELETE FROM project_tasks WHERE project_id = %s AND project_name = %s"
+            cursor.execute(delete_sql, (project_id, project_name))
+            connection.commit()
+            deleted_count = cursor.rowcount
+            print(f"已清空项目 '{project_name}' 的 {deleted_count} 条旧任务数据")
+            existing_count = 0  # 重置计数
         
         print(f"开始处理项目 '{project_name}' 的 {len(excel_data)} 行数据")
         
-        # 识别可能的列名
-        task_name_cols = ['任务名称', 'task_name', 'task', '工作内容', '任务描述', 'task_description', '任务', 'name']
-        wbs_code_cols = ['WBS编码', 'wbs_code', 'wbs', 'WBS', '工作分解结构', 'work_breakdown_structure']
-        task_owner_cols = ['负责人', 'task_owner', 'owner', '责任人', 'task_responsible', 'person_in_charge']
-        planned_start_cols = ['计划开始时间', '计划开始日期', 'planned_start', 'planned_start_date', 'start_date_plan', '计划开始', '计划开工']
-        planned_end_cols = ['计划结束时间', '计划结束日期', 'planned_end', 'planned_end_date', 'end_date_plan', '计划结束', '计划完工']
-        actual_start_cols = ['实际开始时间', '实际开始日期', 'actual_start', 'actual_start_date', 'start_date_actual', '实际开始', '实际开工']
-        actual_end_cols = ['实际结束时间', '实际结束日期', 'actual_end', 'actual_end_date', 'end_date_actual', '实际结束', '实际完工']
-        progress_cols = ['进度', 'progress', '完成度', 'completion_rate', 'percentage']
-        lag_days_cols = ['滞后度(天)', 'lag_days', 'delay_days', 'delay']
-        task_status_cols = ['状态', 'task_status', 'status', '任务状态', '工作状态']
+        # 识别可能的列名 - 增强版本
+        task_name_cols = ['任务名称', 'task_name', 'task', '工作内容', '任务描述', 'task_description', '任务', 'name', '工作项', '活动名称']
+        wbs_code_cols = ['WBS编码', 'wbs_code', 'wbs', 'WBS', '工作分解结构', 'work_breakdown_structure', '编码', '工作包']
+        task_owner_cols = ['负责人', 'task_owner', 'owner', '责任人', 'task_responsible', 'person_in_charge', '执行人', '担当者', '负责人员']
+        planned_start_cols = ['计划开始时间', '计划开始日期', 'planned_start', 'planned_start_date', 'start_date_plan', '计划开始', '计划开工', '预计开始', '计划启动']
+        planned_end_cols = ['计划结束时间', '计划结束日期', 'planned_end', 'planned_end_date', 'end_date_plan', '计划结束', '计划完工', '预计结束', '计划完成']
+        actual_start_cols = ['实际开始时间', '实际开始日期', 'actual_start', 'actual_start_date', 'start_date_actual', '实际开始', '实际开工', '真实开始']
+        actual_end_cols = ['实际结束时间', '实际结束日期', 'actual_end', 'actual_end_date', 'end_date_actual', '实际结束', '实际完工', '真实结束']
+        progress_cols = ['进度', 'progress', '完成度', 'completion_rate', 'percentage', '完成百分比', '进展']
+        lag_days_cols = ['滞后度(天)', 'lag_days', 'delay_days', 'delay', '延期天数', '延迟天数']
+        task_status_cols = ['状态', 'task_status', 'status', '任务状态', '工作状态', '执行状态', '完成状态']
         
         inserted_count = 0
         
@@ -182,54 +191,82 @@ def insert_tasks_to_db(project_id, project_name, manager_name, excel_data):
             
             print(f"  处理第 {i+1} 行数据: {row}")  # 调试信息
             
-            # 遍历行中的每一列，查找匹配的字段
+            # 遍历行中的每一列，查找匹配的字段 - 增强版本
+            print(f"    处理行数据，列名: {list(row.keys())}")
+            
             for col_name, col_value in row.items():
                 col_name_clean = col_name.strip().replace('\u3000', '').replace(' ', '')  # 去除全角空格和普通空格
                 col_name_lower = col_name_clean.lower()
                 
-                if any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in task_name_cols]) and not task_name:
+                # 增强的任务名称匹配
+                if not task_name and (
+                    any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower 
+                        for keyword in [c.replace('\u3000', '').replace(' ', '') for c in task_name_cols]) or
+                    ('任务' in col_name_clean and '名称' in col_name_clean) or
+                    ('工作' in col_name_clean and '内容' in col_name_clean)
+                ):
                     task_name = str(col_value) if col_value else None
-                    print(f"    找到任务名称: {task_name}")
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in wbs_code_cols]) and not wbs_code:
+                    print(f"    找到任务名称: {task_name} (列名: {col_name})")
+                
+                # 增强的WBS编码匹配
+                elif not wbs_code and (
+                    any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower 
+                        for keyword in [c.replace('\u3000', '').replace(' ', '') for c in wbs_code_cols]) or
+                    ('wbs' in col_name_lower) or ('编码' in col_name_clean and 'wbs' in col_name_lower)
+                ):
                     wbs_code = str(col_value) if col_value else None
-                    print(f"    找到WBS编码: {wbs_code}")
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in task_owner_cols]) and not task_owner:
+                    print(f"    找到WBS编码: {wbs_code} (列名: {col_name})")
+                
+                # 增强的负责人匹配
+                elif not task_owner and (
+                    any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower 
+                        for keyword in [c.replace('\u3000', '').replace(' ', '') for c in task_owner_cols]) or
+                    ('负责' in col_name_clean and ('人' in col_name_clean or '者' in col_name_clean)) or
+                    ('担当' in col_name_clean) or ('执行' in col_name_clean and '人' in col_name_clean)
+                ):
                     task_owner = str(col_value) if col_value else None
-                    print(f"    找到负责人: {task_owner}")
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in planned_start_cols]) and not planned_start:
+                    print(f"    找到负责人: {task_owner} (列名: {col_name})")
+                
+                # 日期字段匹配保持原样但添加更多调试信息
+                elif not planned_start and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in planned_start_cols]):
                     planned_start = extract_date_from_cell(col_value)
-                    print(f"    找到计划开始: {planned_start}")
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in planned_end_cols]) and not planned_end:
+                    print(f"    找到计划开始: {planned_start} (列名: {col_name}, 原始值: {col_value})")
+                elif not planned_end and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in planned_end_cols]):
                     planned_end = extract_date_from_cell(col_value)
-                    print(f"    找到计划结束: {planned_end}")
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in actual_start_cols]) and not actual_start:
+                    print(f"    找到计划结束: {planned_end} (列名: {col_name}, 原始值: {col_value})")
+                elif not actual_start and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in actual_start_cols]):
                     actual_start = extract_date_from_cell(col_value)
-                    print(f"    找到实际开始: {actual_start}")
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in actual_end_cols]) and not actual_end:
+                    print(f"    找到实际开始: {actual_start} (列名: {col_name}, 原始值: {col_value})")
+                elif not actual_end and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in actual_end_cols]):
                     actual_end = extract_date_from_cell(col_value)
-                    print(f"    找到实际结束: {actual_end}")
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in progress_cols]) and not progress:
+                    print(f"    找到实际结束: {actual_end} (列名: {col_name}, 原始值: {col_value})")
+                
+                # 进度匹配保持原样
+                elif not progress and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in progress_cols]):
                     if col_value is not None:
                         try:
-                            # 处理百分比格式
                             val_str = str(col_value).replace('%', '')
                             if val_str.replace('.', '').isdigit():
                                 progress = float(val_str)
                             else:
                                 progress = None
-                            print(f"    找到进度: {progress}")
+                            print(f"    找到进度: {progress} (列名: {col_name})")
                         except:
                             progress = None
-                elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in lag_days_cols]) and not lag_days:
+                
+                # 滞后天数匹配保持原样
+                elif not lag_days and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in lag_days_cols]):
                     if col_value is not None:
                         try:
                             lag_days = float(str(col_value)) if str(col_value).replace('-', '').replace('.', '').isdigit() else None
-                            print(f"    找到滞后天数: {lag_days}")
+                            print(f"    找到滞后天数: {lag_days} (列名: {col_name})")
                         except:
                             lag_days = None
+                
+                # 状态匹配保持原样
                 elif any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in task_status_cols]):
                     task_status = str(col_value) if col_value else None
-                    print(f"    找到状态: {task_status}")
+                    print(f"    找到状态: {task_status} (列名: {col_name})")
             
             # 只有当至少有任务名称时才插入记录
             if task_name and task_name.strip() != '':
@@ -283,36 +320,80 @@ def insert_tasks_to_db(project_id, project_name, manager_name, excel_data):
             print(f"成功插入 {inserted_count} 个任务到项目 '{project_name}' (ID: {project_id})")
         else:
             print(f"项目 '{project_name}' 没有找到有效的任务数据或插入失败")
-        return True
+        return True, existing_count
     except mysql.connector.Error as e:
         print(f"插入任务数据时出错: {e}")
-        return False
+        return False, existing_count
     finally:
         if connection.is_connected():
             cursor.close()
             connection.close()
 
 def parse_filename(filename):
-    """解析文件名，提取项目名和项目经理"""
+    """解析文件名，提取项目名和项目经理 - 改进版本"""
+    print(f"开始解析文件名: {filename}")
+    
     # 去掉扩展名
     name_without_ext = os.path.splitext(filename)[0]
+    print(f"去掉扩展名后: {name_without_ext}")
     
-    # 尝试匹配 "xxx(项目名)-项目经理姓名" 格式
-    match = re.match(r'.*\((.+)\)-(.+)', name_without_ext)
+    # 检查是否为临时文件名
+    temp_patterns = [
+        r'^tmp[a-zA-Z0-9]+$',      # tmp开头的随机字符串
+        r'^tmp[a-zA-Z0-9]+_$',     # tmp开头带下划线结尾
+        r'^temp_[a-zA-Z0-9]+$',    # temp_开头的随机字符串
+        r'^[a-zA-Z0-9]{8,}$',      # 纯随机字符（8位以上）
+        r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'  # UUID格式
+    ]
     
-    if match:
-        project_name = match.group(1).strip()
-        manager_name = match.group(2).strip()
+    for pattern in temp_patterns:
+        if re.match(pattern, name_without_ext):
+            print(f"检测到临时文件名: {name_without_ext}，将使用默认项目名")
+            return "未命名项目", "未知负责人"
+    
+    # 尝试多种格式匹配
+    
+    # 格式1: "xxx(项目名)-项目经理姓名"
+    match1 = re.match(r'.*\((.+)\)(?:-|_)(.+)', name_without_ext)
+    if match1:
+        project_name = match1.group(1).strip()
+        manager_name = match1.group(2).strip()
+        print(f"格式1匹配成功 - 项目名: {project_name}, 项目经理: {manager_name}")
         return project_name, manager_name
     
-    # 如果不符合上述格式，尝试匹配 "项目名-项目经理姓名" 格式
+    # 格式2: "项目名-项目经理姓名" (最常见的格式)
     last_dash_index = name_without_ext.rfind('-')
-    if last_dash_index != -1:
+    if last_dash_index != -1 and last_dash_index > 0:
         project_name = name_without_ext[:last_dash_index].strip()
         manager_name = name_without_ext[last_dash_index+1:].strip()
-        return project_name, manager_name
+        # 验证项目经理姓名合理性（中文姓名2-4个字符）
+        if project_name and manager_name and re.match(r'^[\u4e00-\u9fff]{2,4}$', manager_name):
+            print(f"格式2匹配成功 - 项目名: {project_name}, 项目经理: {manager_name}")
+            return project_name, manager_name
+    
+    # 格式3: "项目名_项目经理姓名"
+    last_underscore_index = name_without_ext.rfind('_')
+    if last_underscore_index != -1 and last_underscore_index > 0:
+        project_name = name_without_ext[:last_underscore_index].strip()
+        manager_name = name_without_ext[last_underscore_index+1:].strip()
+        # 验证项目经理姓名合理性
+        if project_name and manager_name and re.match(r'^[\u4e00-\u9fff]{2,4}$', manager_name):
+            print(f"格式3匹配成功 - 项目名: {project_name}, 项目经理: {manager_name}")
+            return project_name, manager_name
+    
+    # 格式4: 尝试从文件名中智能提取（适用于没有明确分隔符的情况）
+    # 假设文件名中包含中文且最后一个中文词是项目经理
+    chinese_chars = re.findall(r'[\u4e00-\u9fff]+', name_without_ext)
+    if len(chinese_chars) >= 2:
+        # 取最后一个中文词作为项目经理，其余作为项目名
+        manager_candidate = chinese_chars[-1]
+        project_candidate = ''.join(chinese_chars[:-1])
+        if len(manager_candidate) >= 2 and len(project_candidate) >= 2:
+            print(f"格式4匹配成功 - 项目名: {project_candidate}, 项目经理: {manager_candidate}")
+            return project_candidate, manager_candidate
     
     # 如果都不符合，返回整个名字作为项目名，项目经理为未知
+    print(f"无法识别格式，使用默认值 - 项目名: {name_without_ext}, 项目经理: 未知")
     return name_without_ext, "未知"
 
 def extract_date_from_cell(cell_value):
@@ -481,17 +562,147 @@ def analyze_excel_data(data_list):
     
     return earliest_planned_start, latest_planned_end, earliest_actual_start, latest_actual_end, status
 
-def process_single_file(file_path, overwrite=False):
+def extract_project_info_from_excel(file_data):
+    """从Excel数据中智能提取项目信息 - 简化版本"""
+    if not file_data:
+        return None, None
+    
+    print("开始从Excel内容中提取项目信息...")
+    
+    # 查找可能包含项目信息的列名
+    project_name_indicators = ['项目', '工程', '任务', '工作', 'project', 'proj']
+    manager_indicators = ['负责', '担当', '执行', '管理', '主管', 'manager', 'owner']
+    
+    # 收集所有可能的项目相关信息
+    potential_project_names = []
+    potential_managers = []
+    
+    # 检查第一行（通常是标题行）寻找线索
+    if file_data:
+        first_row = file_data[0]
+        for col_name, col_value in first_row.items():
+            col_name_str = str(col_name).strip()
+            col_value_str = str(col_value).strip() if col_value else ""
+            
+            # 检查列名是否暗示项目信息
+            if any(indicator in col_name_str.lower() for indicator in project_name_indicators):
+                if col_value_str and len(col_value_str) > 2:
+                    potential_project_names.append(col_value_str)
+                    print(f"  发现潜在项目名: {col_value_str} (来自列: {col_name_str})")
+            
+            # 检查列名是否暗示负责人信息
+            if any(indicator in col_name_str.lower() for indicator in manager_indicators):
+                if col_value_str and len(col_value_str) > 1:
+                    potential_managers.append(col_value_str)
+                    print(f"  发现潜在负责人: {col_value_str} (来自列: {col_name_str})")
+    
+    # 从任务数据中收集负责人信息
+    task_owners = []
+    for row in file_data:
+        for col_name, col_value in row.items():
+            col_name_clean = str(col_name).strip().replace('\u3000', '').replace(' ', '')
+            col_value_str = str(col_value).strip() if col_value else ""
+            
+            # 匹配负责人列
+            task_owner_cols = ['负责人', 'task_owner', 'owner', '责任人', 'task_responsible', 'person_in_charge', '执行人', '担当者', '负责人员']
+            if any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_clean.lower() 
+                   for keyword in [c.replace('\u3000', '').replace(' ', '') for c in task_owner_cols]):
+                if col_value_str and len(col_value_str) > 1 and col_value_str not in task_owners:
+                    # 验证是否为合理的中文姓名
+                    if re.match(r'^[\u4e00-\u9fff]{2,4}$', col_value_str):
+                        task_owners.append(col_value_str)
+                        print(f"  从任务数据发现负责人: {col_value_str}")
+    
+    # 决策项目名称
+    project_name = None
+    if potential_project_names:
+        # 选择最长的有效项目名
+        project_name = max(potential_project_names, key=len)
+    elif file_data:
+        # 从任务内容中提取项目主题
+        task_contents = []
+        for row in file_data:
+            for col_name, col_value in row.items():
+                col_name_clean = str(col_name).strip().replace('\u3000', '').replace(' ', '')
+                col_value_str = str(col_value).strip() if col_value else ""
+                
+                # 匹配任务名称列
+                task_name_cols = ['任务名称', 'task_name', 'task', '工作内容', '任务描述', 'task_description', '任务', 'name', '工作项', '活动名称']
+                if any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_clean.lower() 
+                       for keyword in [c.replace('\u3000', '').replace(' ', '') for c in task_name_cols]):
+                    if col_value_str and len(col_value_str) > 3:
+                        task_contents.append(col_value_str)
+        
+        # 从任务内容中提取共同主题
+        if task_contents:
+            first_task = task_contents[0]
+            # 移除常见的编号前缀
+            prefixes_to_remove = ['0100', '0101', '0102', '0200', '0300', '0400', '0500', '0501', '0502']
+            for prefix in prefixes_to_remove:
+                if first_task.startswith(prefix):
+                    first_task = first_task[len(prefix):].strip()
+                    break
+            
+            if first_task:
+                project_name = f"{first_task}项目"
+            else:
+                project_name = "项目管理系统"
+        elif task_owners:
+            project_name = f"{task_owners[0]}的项目"
+        else:
+            project_name = "未命名项目"
+    else:
+        project_name = "未命名项目"
+    
+    # 决策负责人
+    manager_name = None
+    if potential_managers:
+        # 优先选择符合中文姓名格式的
+        chinese_managers = [mgr for mgr in potential_managers 
+                           if re.match(r'^[\u4e00-\u9fff]{2,4}$', mgr)]
+        if chinese_managers:
+            manager_name = chinese_managers[0]
+        else:
+            manager_name = potential_managers[0]
+    elif task_owners:
+        # 统计出现频率最高的负责人
+        from collections import Counter
+        owner_counts = Counter(task_owners)
+        if owner_counts:
+            manager_name = owner_counts.most_common(1)[0][0]
+        else:
+            manager_name = "未知负责人"
+    else:
+        manager_name = "未知负责人"
+    
+    print(f"智能提取结果 - 项目名: {project_name}, 负责人: {manager_name}")
+    return project_name, manager_name
+
+def process_single_file(file_path, overwrite=False, original_filename=None):
     """处理单个Excel文件并导入到数据库"""
-    filename = os.path.basename(file_path)
+    # 优先使用传入的原始文件名，如果没有则使用文件路径中的文件名
+    filename = original_filename if original_filename else os.path.basename(file_path)
+    print(f"使用文件名进行解析: {filename}")
     project_name, manager_name = parse_filename(filename)
     
     print(f"\n处理表格: {filename}")
-    print(f"  解析项目名: {project_name}")
-    print(f"  解析项目经理: {manager_name}")
+    print(f"  初步解析项目名: {project_name}")
+    print(f"  初步解析项目经理: {manager_name}")
     
     # 读取文件数据
     file_data = read_excel_data(file_path)
+    
+    # 如果初步解析结果不佳（临时文件名或默认值），尝试从Excel内容中智能提取
+    if (project_name.startswith("tmp") or project_name in ["未命名项目", filename.replace('.xlsx', '').replace('.xls', '')]) and \
+       (manager_name in ["未知", "未知负责人"]):
+        print("检测到默认值，尝试从Excel内容中智能提取项目信息...")
+        smart_project_name, smart_manager_name = extract_project_info_from_excel(file_data)
+        if smart_project_name and smart_manager_name:
+            project_name = smart_project_name
+            manager_name = smart_manager_name
+            print(f"  智能提取成功 - 项目名: {project_name}, 负责人: {manager_name}")
+        else:
+            print("  智能提取失败，继续使用默认值")
     
     if not file_data:
         print(f"  警告: 无法读取文件 {file_path} 的数据")
@@ -520,11 +731,12 @@ def process_single_file(file_path, overwrite=False):
         clear_existing_project_tasks(project_id, project_name)
     
     # 将任务信息插入到project_tasks表
-    success = insert_tasks_to_db(
+    success, existing_count = insert_tasks_to_db(
         project_id,
         project_name,
         manager_name,
-        file_data
+        file_data,
+        overwrite
     )
     
     result = {
@@ -534,6 +746,7 @@ def process_single_file(file_path, overwrite=False):
         "manager_name": manager_name,
         "project_id": project_id,
         "data_rows": len(file_data),
+        "existing_count": existing_count,  # 添加现有数据条数
         "planned_start": planned_start,
         "planned_end": planned_end,
         "actual_start": actual_start,
@@ -545,8 +758,12 @@ def process_single_file(file_path, overwrite=False):
         print(f"  ✓ 项目任务信息已成功导入数据库")
         result["message"] = "导入成功"
     else:
-        print(f"  ✗ 项目任务信息导入数据库失败")
-        result["message"] = "导入失败"
+        if existing_count > 0:
+            print(f"  ⚠ 项目 '{project_name}' 已有 {existing_count} 条任务数据，需要确认是否覆盖")
+            result["message"] = f"项目已存在 {existing_count} 条任务数据"
+        else:
+            print(f"  ✗ 项目任务信息导入数据库失败")
+            result["message"] = "导入失败"
     
     return result
 

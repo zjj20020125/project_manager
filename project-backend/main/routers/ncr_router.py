@@ -1,5 +1,5 @@
 """
-NCR管理相关API接口
+NCR管理相关路由模块
 包含NCR统计、查询、详情等功能
 """
 
@@ -13,7 +13,7 @@ from database.database import execute_query
 # 创建路由器实例
 router = APIRouter(prefix="/v1", tags=["NCR管理"])
 
-# 21. 获取NCR类型分布统计（用于饼图）
+# 1. 获取NCR类型分布统计（用于饼图）
 @router.get("/ncr/type-distribution", response_model=List[dict])
 def get_ncr_type_distribution():
     """获取NCR类型分布统计"""
@@ -130,7 +130,7 @@ def get_ncr_type_distribution():
         print(f"获取NCR类型分布统计出错: {e}")
         return []
 
-# 22. 获取NCR发生阶段分布统计
+# 2. 获取NCR发生阶段分布统计
 @router.get("/ncr/stage-distribution", response_model=List[dict])
 def get_ncr_stage_distribution():
     """获取NCR发生阶段分布统计"""
@@ -222,7 +222,7 @@ def get_ncr_stage_distribution():
         print(f"获取NCR发生阶段分布统计出错: {e}")
         return []
 
-# 23. 获取评审阶段责任人员分布统计
+# 3. 获取评审阶段责任人员分布统计
 @router.get("/ncr/responsibility-analysis", response_model=List[dict])
 def get_responsibility_analysis():
     """获取评审阶段责任人员分布统计"""
@@ -300,343 +300,7 @@ def get_responsibility_analysis():
         print(f"获取责任人员分析统计出错: {e}")
         return []
 
-# 23. 根据阶段获取NCR数据
-@router.get("/ncr/by-stage")
-async def get_ncr_by_stage(stage: str = None, status: str = None, priority: str = None, page: int = 1, limit: int = 20):
-    """根据阶段获取NCR数据"""
-    try:
-        # 计算偏移量
-        offset = (page - 1) * limit
-        
-        # 检查jgjncr_copy表是否存在
-        check_table_sql = "SHOW TABLES LIKE 'jgjncr_copy'"
-        table_exists = execute_query(check_table_sql)
-        if not table_exists:
-            print("警告: jgjncr_copy表不存在，尝试使用jgjncr表")
-            # 检查jgjncr表是否存在
-            check_table_sql = "SHOW TABLES LIKE 'jgjncr'"
-            table_exists = execute_query(check_table_sql)
-            if not table_exists:
-                print("警告: jgjncr表也不存在")
-                return {"data": [], "total": 0}
-            table_name = 'jgjncr'
-        else:
-            table_name = 'jgjncr_copy'
-        
-        # 检查必要字段是否存在
-        describe_sql = f"DESCRIBE {table_name}"
-        columns_result = execute_query(describe_sql, fetch_all=True)
-        if not columns_result:
-            print(f"警告: 无法获取{table_name}表结构")
-            return {"data": [], "total": 0}
-        
-        column_names = [col['Field'] for col in columns_result if 'Field' in col]
-        
-        # 构建查询条件
-        conditions = []
-        params = []
-        
-        if stage:
-            if 'fsjd' in column_names:
-                conditions.append("fsjd = %s")
-                params.append(stage)
-            elif 'occurrence_stage' in column_names:
-                conditions.append("occurrence_stage = %s")
-                params.append(stage)
-            else:
-                print("警告: 表中没有fsjd或occurrence_stage字段")
-                return {"data": [], "total": 0}
-        
-        if status:
-            if 'status' in column_names:
-                conditions.append("status = %s")
-                params.append(status)
-            else:
-                print("警告: 表中没有status字段")
-        
-        if priority:
-            if 'review_level' in column_names:
-                conditions.append("review_level = %s")
-                params.append(priority)
-            else:
-                print("警告: 表中没有review_level字段")
-        
-        # 构建WHERE子句
-        where_clause = " AND ".join(conditions) if conditions else "1=1"
-        
-        # 查询数据总数
-        count_sql = f"SELECT COUNT(*) as total FROM {table_name} WHERE {where_clause}"
-        count_result = execute_query(count_sql, tuple(params))
-        total_count = count_result.get('total', 0) if count_result else 0
-        
-        # 查询数据
-        query_sql = f"""
-        SELECT * FROM {table_name} 
-        WHERE {where_clause}
-        ORDER BY create_date DESC, process_no DESC
-        LIMIT %s OFFSET %s
-        """
-        
-        # 添加LIMIT和OFFSET参数
-        params.extend([limit, offset])
-        
-        ncr_data = execute_query(query_sql, tuple(params), fetch_all=True) or []
-        
-        # 格式化数据
-        formatted_data = []
-        for record in ncr_data:
-            if record is not None:
-                formatted_record = {}
-                for key, value in record.items():
-                    # 处理日期字段
-                    if isinstance(value, datetime):
-                        formatted_record[key] = str(value)
-                    # 处理数字字段
-                    elif hasattr(value, 'quantize'):  # Decimal类型
-                        formatted_record[key] = float(value)
-                    else:
-                        formatted_record[key] = value
-                formatted_data.append(formatted_record)
-        
-        return {
-            "data": formatted_data,
-            "total": total_count
-        }
-    except Exception as e:
-        print(f"根据阶段获取NCR数据出错: {e}")
-        return {"data": [], "total": 0}
-
-# 24. 获取NCR详情
-@router.get("/ncr/detail/{process_no}")
-async def get_ncr_detail(process_no: str):
-    """获取NCR详情"""
-    try:
-        # 检查jgjncr_copy表是否存在
-        check_table_sql = "SHOW TABLES LIKE 'jgjncr_copy'"
-        table_exists = execute_query(check_table_sql)
-        if not table_exists:
-            print("警告: jgjncr_copy表不存在，尝试使用jgjncr表")
-            # 检查jgjncr表是否存在
-            check_table_sql = "SHOW TABLES LIKE 'jgjncr'"
-            table_exists = execute_query(check_table_sql)
-            if not table_exists:
-                print("警告: jgjncr表也不存在")
-                raise HTTPException(status_code=404, detail="NCR表不存在")
-            table_name = 'jgjncr'
-        else:
-            table_name = 'jgjncr_copy'
-        
-        # 检查必要字段是否存在
-        describe_sql = f"DESCRIBE {table_name}"
-        columns_result = execute_query(describe_sql, fetch_all=True)
-        if not columns_result:
-            print(f"警告: 无法获取{table_name}表结构")
-            raise HTTPException(status_code=404, detail="无法获取表结构")
-        
-        # 查询特定NCR记录
-        query_sql = f"SELECT * FROM {table_name} WHERE process_no = %s"
-        ncr_record = execute_query(query_sql, (process_no,), fetch_one=True)
-        
-        if not ncr_record:
-            raise HTTPException(status_code=404, detail=f"未找到NCR编号为 {process_no} 的记录")
-        
-        # 格式化数据
-        formatted_record = {}
-        for key, value in ncr_record.items():
-            # 处理日期字段
-            if isinstance(value, datetime):
-                formatted_record[key] = str(value)
-            # 处理数字字段
-            elif hasattr(value, 'quantize'):  # Decimal类型
-                formatted_record[key] = float(value)
-            else:
-                formatted_record[key] = value
-        
-        return formatted_record
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"获取NCR详情出错: {e}")
-        raise HTTPException(status_code=500, detail="获取NCR详情失败")
-
-# 25. 获取NCR列表
-@router.get("/ncr/list")
-async def get_ncr_list(page: int = 1, limit: int = 20):
-    """获取NCR列表"""
-    try:
-        # 计算偏移量
-        offset = (page - 1) * limit
-        
-        # 检查jgjncr_copy表是否存在
-        check_table_sql = "SHOW TABLES LIKE 'jgjncr_copy'"
-        table_exists = execute_query(check_table_sql)
-        if not table_exists:
-            print("警告: jgjncr_copy表不存在，尝试使用jgjncr表")
-            # 检查jgjncr表是否存在
-            check_table_sql = "SHOW TABLES LIKE 'jgjncr'"
-            table_exists = execute_query(check_table_sql)
-            if not table_exists:
-                print("警告: jgjncr表也不存在")
-                return []
-            table_name = 'jgjncr'
-        else:
-            table_name = 'jgjncr_copy'
-        
-        # 检查必要字段是否存在
-        describe_sql = f"DESCRIBE {table_name}"
-        columns_result = execute_query(describe_sql, fetch_all=True)
-        if not columns_result:
-            print(f"警告: 无法获取{table_name}表结构")
-            return []
-        
-        column_names = [col['Field'] for col in columns_result if 'Field' in col]
-        
-        # 查询NCR数据
-        query_sql = f"""
-        SELECT * FROM {table_name}
-        ORDER BY create_date DESC, process_no DESC
-        LIMIT %s OFFSET %s
-        """
-        
-        ncr_data = execute_query(query_sql, (limit, offset), fetch_all=True) or []
-        
-        # 格式化数据
-        formatted_data = []
-        for record in ncr_data:
-            if record is not None:
-                formatted_record = {}
-                for key, value in record.items():
-                    # 处理日期字段
-                    if isinstance(value, datetime):
-                        formatted_record[key] = str(value)
-                    # 处理数字字段
-                    elif hasattr(value, 'quantize'):  # Decimal类型
-                        formatted_record[key] = float(value)
-                    else:
-                        formatted_record[key] = value
-                formatted_data.append(formatted_record)
-        
-        return formatted_data
-    except Exception as e:
-        print(f"获取NCR列表出错: {e}")
-        return []
-
-# 26. 获取DQJD和WCZZ数据统计
-@router.get("/dqjd-wczz-data")
-async def get_dqjd_wczz_data():
-    """获取DQJD和WCZZ数据统计"""
-    try:
-        # 检查jgjncr_copy表是否存在
-        check_table_sql = "SHOW TABLES LIKE 'jgjncr_copy'"
-        table_exists = execute_query(check_table_sql)
-        if not table_exists:
-            print("警告: jgjncr_copy表不存在，尝试使用jgjncr表")
-            # 检查jgjncr表是否存在
-            check_table_sql = "SHOW TABLES LIKE 'jgjncr'"
-            table_exists = execute_query(check_table_sql)
-            if not table_exists:
-                print("警告: jgjncr表也不存在")
-                return {"dqjdStats": [], "wczzStats": [], "tableData": []}
-            table_name = 'jgjncr'
-        else:
-            table_name = 'jgjncr_copy'
-        
-        # 检查必要字段是否存在
-        describe_sql = f"DESCRIBE {table_name}"
-        columns_result = execute_query(describe_sql, fetch_all=True)
-        if not columns_result:
-            print(f"警告: 无法获取{table_name}表结构")
-            return {"dqjdStats": [], "wczzStats": [], "tableData": []}
-        
-        column_names = [col['Field'] for col in columns_result if 'Field' in col]
-        
-        # 检查所需字段是否存在
-        if 'dqjd' not in column_names:
-            print(f"警告: {table_name}表中没有dqjd字段")
-            return {"dqjdStats": [], "wczzStats": [], "tableData": []}
-        
-        if 'wczz' not in column_names:
-            print(f"警告: {table_name}表中没有wczz字段")
-            return {"dqjdStats": [], "wczzStats": [], "tableData": []}
-        
-        # 构建查询条件 - 只查询DQJD不等于'9-完成'的记录
-        where_clause = "WHERE dqjd != %s OR dqjd IS NULL"
-        exclude_value = '9-完成'
-        
-        # 查询DQJD统计
-        dqjd_sql = f"SELECT dqjd, COUNT(*) as count FROM {table_name} {where_clause} GROUP BY dqjd ORDER BY count DESC"
-        dqjd_data = execute_query(dqjd_sql, (exclude_value,), fetch_all=True) or []
-        
-        # 格式化DQJD统计数据
-        dqjd_stats = []
-        for record in dqjd_data:
-            if record and record.get('dqjd') is not None:
-                dqjd_stats.append({
-                    'name': record['dqjd'],
-                    'value': record['count']
-                })
-        
-        # 查询WCZZ原始数据（不进行GROUP BY，以便拆分多个姓名）
-        wczz_sql = f"SELECT wczz FROM {table_name} {where_clause}"
-        wczz_raw_data = execute_query(wczz_sql, (exclude_value,), fetch_all=True) or []
-        
-        # 格式化WCZZ统计数据 - 拆分多个姓名并累加计数
-        wczz_stats_dict = {}
-        for record in wczz_raw_data:
-            if record and record.get('wczz') is not None:
-                wczz_value = record['wczz']
-                # 按多种分隔符分割姓名：逗号、中文逗号、分号、中文分号、顿号
-                import re
-                names = re.split(r'[,,，,;,；,、,+]', str(wczz_value))
-                for name in names:
-                    name = name.strip()  # 去除空白字符
-                    if name:  # 确保姓名不为空
-                        if name in wczz_stats_dict:
-                            wczz_stats_dict[name] += 1
-                        else:
-                            wczz_stats_dict[name] = 1
-        
-        # 转换为数组格式
-        wczz_stats = []
-        for name, count in wczz_stats_dict.items():
-            wczz_stats.append({
-                'name': name,
-                'value': count
-            })
-        
-        # 查询详细表格数据
-        table_sql = f"SELECT * FROM {table_name} {where_clause} ORDER BY create_date DESC LIMIT 100"
-        table_data = execute_query(table_sql, (exclude_value,), fetch_all=True) or []
-        
-        # 格式化表格数据
-        formatted_table_data = []
-        for record in table_data:
-            if record is not None:
-                formatted_record = {}
-                for key, value in record.items():
-                    # 处理日期字段
-                    if isinstance(value, datetime):
-                        formatted_record[key] = str(value)
-                    # 处理数字字段
-                    elif hasattr(value, 'quantize'):  # Decimal类型
-                        formatted_record[key] = float(value)
-                    else:
-                        formatted_record[key] = value
-                formatted_table_data.append(formatted_record)
-        
-        return {
-            "dqjdStats": dqjd_stats,
-            "wczzStats": wczz_stats,
-            "tableData": formatted_table_data
-        }
-    except Exception as e:
-        print(f"获取DQJD/WCZZ数据出错: {e}")
-        import traceback
-        traceback.print_exc()
-        return {"dqjdStats": [], "wczzStats": [], "tableData": []}
-
-
-# 28. 获取未评审阶段责任人员分布统计（前15名）
+# 4. 获取未评审阶段责任人员分布统计（前15名）
 @router.get("/ncr/unreviewed-stage-responsibility", response_model=List[dict])
 def get_unreviewed_stage_responsibility():
     """
@@ -709,8 +373,7 @@ def get_unreviewed_stage_responsibility():
         traceback.print_exc()
         return []
 
-
-# 27. 获取未评审状态下的负责人统计（用于展示dqjd为'3-未评审'的记录中wczz字段的人员统计，显示前15名）
+# 5. 获取未评审状态下的负责人统计（前15名）
 @router.get("/ncr/unreviewed-responsibility", response_model=List[dict])
 def get_unreviewed_responsibility_stats():
     """获取未评审状态下的负责人统计"""

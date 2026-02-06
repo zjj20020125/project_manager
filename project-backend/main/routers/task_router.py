@@ -354,3 +354,96 @@ async def get_tasks_by_status(status: str, limit: int = 100, offset: int = 0):
     except Exception as e:
         print(f"获取任务状态列表出错: {e}")
         return []
+
+# 15. 根据项目状态获取任务数据（用于项目状态详情页）
+@router.get("/tasks-by-project-status/{status}")
+async def get_tasks_by_project_status(status: str):
+    """根据项目状态获取任务数据"""
+    try:
+        # 检查project_tasks表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'project_tasks'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            print("警告: project_tasks表不存在")
+            return []
+
+        # 检查必要字段是否存在
+        describe_sql = "DESCRIBE project_tasks"
+        columns_result = execute_query(describe_sql, fetch_all=True)
+        if not columns_result:
+            print("警告: 无法获取project_tasks表结构")
+            return []
+
+        column_names = [col['Field'] for col in columns_result if 'Field' in col]
+        required_columns = ['task_status', 'task_name', 'project_name', 'task_owner', 'wbs_code', 'planned_start_date', 'planned_end_date', 'actual_start_date', 'actual_end_date', 'progress', 'created_at']
+        missing_columns = [col for col in required_columns if col not in column_names]
+
+        if missing_columns:
+            print(f"警告: project_tasks表缺少以下列: {missing_columns}")
+            return []
+
+        # 直接使用传入的状态参数查询
+        db_status = status
+        
+        # 检查数据库中是否存在该状态的任务
+        count_sql = "SELECT COUNT(*) as total FROM project_tasks WHERE task_status = %s"
+        count_result = execute_query(count_sql, (db_status,))
+        total_count = count_result.get('total', 0) if count_result else 0
+        print(f"状态为 '{db_status}' 的任务总数: {total_count}")
+
+        task_sql = """
+        SELECT 
+            task_id,
+            project_name,
+            wbs_code,
+            task_name,
+            task_owner,
+            task_status,
+            planned_start_date,
+            planned_end_date,
+            actual_start_date,
+            actual_end_date,
+            progress,
+            created_at
+        FROM project_tasks
+        WHERE task_status = %s
+        ORDER BY created_at DESC
+        """
+        tasks = execute_query(task_sql, (db_status,), fetch_all=True) or []
+
+        # 格式化数据以匹配前端期望的格式
+        formatted_tasks = []
+        for task in tasks:
+            if not task:
+                continue
+
+            # 处理进度字段
+            progress_value = task.get("progress")
+            if hasattr(progress_value, 'quantize'):  # 如果是Decimal类型
+                progress_float = float(progress_value)
+            else:
+                progress_float = float(progress_value) if progress_value is not None else 0.0
+
+            formatted_task = {
+                "task_id": task.get("task_id"),
+                "task_name": task.get("task_name", ""),
+                "project_name": task.get("project_name", ""),
+                "wbs_code": task.get("wbs_code", ""),
+                "task_owner": task.get("task_owner", ""),
+                "task_status": task.get("task_status", ""),
+                "planned_start_date": str(task.get("planned_start_date")) if task.get("planned_start_date") else "",
+                "planned_end_date": str(task.get("planned_end_date")) if task.get("planned_end_date") else "",
+                "actual_start_date": str(task.get("actual_start_date")) if task.get("actual_start_date") else "",
+                "actual_end_date": str(task.get("actual_end_date")) if task.get("actual_end_date") else "",
+                "progress": progress_float,
+                "created_at": str(task.get("created_at")) if task.get("created_at") else ""
+            }
+            formatted_tasks.append(formatted_task)
+
+        print(f"根据状态'{status}'返回任务数据: {len(formatted_tasks)} 条")
+        return formatted_tasks
+    except Exception as e:
+        print(f"根据项目状态获取任务数据出错: {e}")
+        import traceback
+        traceback.print_exc()
+        return []

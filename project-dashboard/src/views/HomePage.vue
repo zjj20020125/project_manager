@@ -4,9 +4,9 @@
     <div style="position: fixed; top: 0; left: 0; right: 0; z-index: 1000; background: linear-gradient(135deg, #409EFF 0%, #4d9eff 100%); padding: 30px; box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);"> 
       <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: center; align-items: center; position: relative;">
         <div style="text-align: center;">
-          <h1 v-if="currentView !== 'ncr'" style="margin: 0; font-size: 32px; color: white; font-weight: bold; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);">项目总览</h1>
+          <h1 v-if="currentView !== 'ncr'" style="margin: 0; font-size: 32px; color: white; font-weight: bold; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);">工艺技术部 | 新产品项目总览</h1>
           <h1 v-else style="margin: 0; font-size: 32px; color: white; font-weight: bold; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);">NCR管理</h1>
-          <p v-if="currentView !== 'ncr'" style="margin-top: 10px; color: rgba(255, 255, 255, 0.9); font-size: 16px;">结构件事业部项目管理</p>
+          <p v-if="currentView !== 'ncr'" style="margin-top: 10px; color: rgba(255, 255, 255, 0.9); font-size: 16px;">结构件事业部</p>
           <p v-else style="margin-top: 10px; color: rgba(255, 255, 255, 0.9); font-size: 16px;">NCR流程管理</p>
         </div>
         <div style="color: white; font-size: 18px; position: absolute; right: 0;">
@@ -181,7 +181,9 @@
               @selection-change="handleSelectionChange"
             >
               <el-table-column type="selection" width="55" align="center" />
-              <el-table-column prop="project_id" label="项目编号" width="100" align="center" header-align="center" />
+              <el-table-column type="index" label="序号" width="60" align="center" header-align="center" />
+              <!-- 隐藏项目编号列 -->
+              <el-table-column prop="project_id" label="项目编号" width="100" align="center" header-align="center" v-show="false" />
               <el-table-column 
                 prop="project_name" 
                 label="项目名称" 
@@ -283,6 +285,24 @@
               </span>
             </template>
           </el-dialog>
+
+          <!-- 编辑项目信息对话框 -->
+          <el-dialog v-model="editProjectDialogVisible" title="编辑项目信息" width="500px">
+            <el-form :model="projectEditForm" label-width="100px">
+              <el-form-item label="项目名称" required>
+                <el-input v-model="projectEditForm.project_name" placeholder="请输入项目名称"></el-input>
+              </el-form-item>
+              <el-form-item label="项目经理">
+                <el-input v-model="projectEditForm.project_manager" placeholder="请输入项目经理姓名"></el-input>
+              </el-form-item>
+            </el-form>
+            <template #footer>
+              <span class="dialog-footer">
+                <el-button @click="editProjectDialogVisible = false">取消</el-button>
+                <el-button type="primary" @click="confirmEditProject">确认修改</el-button>
+              </span>
+            </template>
+          </el-dialog>
         </div>
       </div>
     </el-main>
@@ -292,7 +312,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, reactive } from 'vue'
 import * as echarts from 'echarts'
-import { ElContainer, ElHeader, ElMain, ElRow, ElCol, ElCard, ElMenu, ElMenuItem, ElTable, ElTableColumn, ElTag, ElProgress, ElMessage, vLoading, ElButton, ElDialog, ElRadio, ElRadioGroup, ElAlert, ElUpload } from 'element-plus'
+import { ElContainer, ElHeader, ElMain, ElRow, ElCol, ElCard, ElMenu, ElMenuItem, ElTable, ElTableColumn, ElTag, ElProgress, ElMessage, ElLoading, ElMessageBox, vLoading, ElButton, ElDialog, ElRadio, ElRadioGroup, ElAlert, ElUpload } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 import * as XLSX from 'xlsx'
 import { useRouter } from 'vue-router'
@@ -377,6 +397,7 @@ const exportType = ref('selected') // 'selected' 或 'all'
 const multipleSelection = ref([]) // 选中的项目
 const selectedFile = ref(null)
 const uploadRef = ref(null)
+const uploadLoading = ref(false) // 导入加载状态
 
 // 在setup函数中返回uploadRef，以便在模板中使用
 
@@ -514,8 +535,12 @@ const getCategoryTagType = (category) => {
 
 // 跳转到项目详情页面
 const goToProjectDetail = (status) => {
-  // 使用路由跳转到项目详情页面
-  router.push({ name: 'ProjectDetail', query: { status: status } })
+  console.log('跳转到项目详情页面，状态:', status);
+  // 使用路由跳转到项目状态详情页面，传递状态参数
+  router.push({ 
+    name: 'ProjectStatusDetail', 
+    params: { status: status }
+  });
 }
 
 // 跳转到任务详情页面
@@ -545,6 +570,7 @@ const goToOwnerTaskDetail = (ownerName) => {
 
 // 跳转到项目状态详情页面
 const goToProjectStatusDetail = (status = null) => {
+  console.log('跳转到项目状态详情页面，状态:', status);
   // 使用路由跳转到项目状态详情页面，传递状态参数
   const routeParams = {
     name: 'ProjectStatusDetail'
@@ -552,6 +578,9 @@ const goToProjectStatusDetail = (status = null) => {
   
   if (status) {
     routeParams.params = { status: status };
+  } else {
+    // 如果没有指定状态，默认跳转到总览
+    routeParams.params = { status: 'total' };
   }
   
   router.push(routeParams);
@@ -559,11 +588,17 @@ const goToProjectStatusDetail = (status = null) => {
 
 // 跳转到项目状态的子任务详情页面
 const goToProjectStatusSubtasks = (status) => {
-  // 使用路由跳转到项目状态的子任务详情页面，传递状态参数
-  router.push({ 
-    name: 'ProjectStatusSubtasksDetail', 
-    params: { status: status }
-  })
+  console.log('跳转到项目状态子任务详情页面，状态:', status);
+  try {
+    // 使用路由跳转到项目状态的子任务详情页面，传递状态参数
+    router.push({ 
+      name: 'ProjectStatusSubtasksDetail', 
+      params: { status: status }
+    });
+    console.log('子任务详情页面跳转成功');
+  } catch (error) {
+    console.error('子任务详情页面跳转失败:', error);
+  }
 }
 
 // 跳转到项目经理详情页面
@@ -752,17 +787,62 @@ const confirmExport = async () => {
   }
 };
 
-// 监听文件选择
-const onFileChange = (file) => {
-  selectedFile.value = file;
-  console.log('Selected file:', file);
-};
-
 // 提交上传
 const submitUpload = async () => {
+  console.log('开始提交上传，selectedFile:', selectedFile.value);
+  
   if (selectedFile.value && selectedFile.value.raw) {
-    // 直接调用处理文件上传函数，使用文件的原始对象
-    await handleFileUpload({ file: selectedFile.value.raw });
+    uploadLoading.value = true;
+    try {
+      console.log('调用handleFileUpload，文件信息:', {
+        name: selectedFile.value.name,
+        size: selectedFile.value.size,
+        type: selectedFile.value.type
+      });
+      
+      // 直接调用处理文件上传函数，使用文件的原始对象
+      await handleFileUpload({ file: selectedFile.value.raw });
+    } catch (error) {
+      console.error('submitUpload过程中发生错误:', error);
+      ElMessage.error('上传过程中发生错误: ' + error.message);
+    } finally {
+      uploadLoading.value = false;
+    }
+  } else {
+    ElMessage.warning('请先选择要导入的文件');
+    console.log('没有选中的文件:', selectedFile.value);
+  }
+};
+
+// 文件选择变化处理
+const onFileChange = (file, fileList) => {
+  console.log('文件选择变化:', file, fileList);
+  selectedFile.value = file;
+  
+  // 验证文件
+  if (file && file.raw) {
+    const fileExt = file.name.split('.').pop().toLowerCase();
+    if (!['xlsx', 'xls', 'csv'].includes(fileExt)) {
+      ElMessage.error('仅支持 .xlsx, .xls, .csv 格式的文件');
+      selectedFile.value = null;
+      // 清空文件列表
+      if (uploadRef.value) {
+        uploadRef.value.clearFiles();
+      }
+      return;
+    }
+    
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (file.size > maxSize) {
+      ElMessage.error('文件大小不能超过50MB');
+      selectedFile.value = null;
+      if (uploadRef.value) {
+        uploadRef.value.clearFiles();
+      }
+      return;
+    }
+    
+    ElMessage.success(`已选择文件: ${file.name}`);
   }
 };
 
@@ -802,6 +882,13 @@ const handleFileUpload = async (options) => {
       // 将文件上传到后端
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('overwrite', 'false'); // 明确添加overwrite参数
+      
+      console.log('准备上传文件:', {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type
+      });
       
       // 使用Promise.race实现超时控制
       const response = await Promise.race([
@@ -814,8 +901,8 @@ const handleFileUpload = async (options) => {
         loading.close();
       }
       
-      // 检查响应中是否包含关于重复数据的信息
-      if (response && response.existing_count !== undefined) {
+      // 检查是否需要用户确认覆盖
+      if (response && response.needs_confirmation) {
         try {
           // 询问用户是否覆盖现有数据
           const overwriteConfirm = await ElMessageBox.confirm(
@@ -838,7 +925,11 @@ const handleFileUpload = async (options) => {
             });
             
             try {
-              const overwriteResponse = await projectApi.importProjects(formData, true);
+              const overwriteFormData = new FormData();
+              overwriteFormData.append('file', file);
+              overwriteFormData.append('overwrite', 'true'); // 启用覆盖
+              
+              const overwriteResponse = await projectApi.importProjects(overwriteFormData);
               overwriteLoading.close();
               ElMessage.success(`${file.name} 导入成功，${overwriteResponse.message}`);
             } catch (overwriteError) {
@@ -858,6 +949,7 @@ const handleFileUpload = async (options) => {
           throw confirmError;
         }
       } else {
+        // 正常导入成功
         ElMessage.success(`${file.name} 导入成功，${response.message}`);
       }
       
@@ -877,6 +969,12 @@ const handleFileUpload = async (options) => {
       }
       
       console.error('导入文件失败:', apiError);
+      console.error('错误详情:', {
+        message: apiError.message,
+        response: apiError.response,
+        request: apiError.request,
+        config: apiError.config
+      });
       
       // 提供更详细的错误信息
       let errorMessage = '导入文件失败';
@@ -885,6 +983,9 @@ const handleFileUpload = async (options) => {
         errorMessage = '请求超时，请检查网络连接或稍后重试';
       } else if (apiError.response) {
         // 服务器返回了错误响应
+        console.log('服务器响应状态:', apiError.response.status);
+        console.log('服务器响应数据:', apiError.response.data);
+        
         if (apiError.response.data) {
           if (apiError.response.data.detail) {
             errorMessage = `导入失败: ${apiError.response.data.detail}`;
@@ -1076,13 +1177,48 @@ const initTypePie = async () => {
     typePieChart.setOption(option)
     
     // 添加点击事件监听
-    typePieChart.on('click', function(params) {
+    typePieChart.on('click', async function(params) {
       console.log('扇形图点击事件:', params)
       // 根据点击的扇形图部分传递相应的状态参数
-      // 从测试结果我们知道数据库中的实际状态值
       let status = params.name; // 直接使用扇形图显示的名称
-      console.log('传递的状态参数:', status)
-      goToProjectStatusSubtasks(status);
+      console.log('点击的状态:', status)
+      
+      try {
+        // 调用新的API接口获取project_tasks表中匹配status的数据
+        const projectTasksData = await projectApi.getProjectTasksByStatus(status);
+        console.log('从project_tasks表获取的数据:', projectTasksData);
+        
+        // 将获取到的数据存储到localStorage中，供项目详情页面使用
+        localStorage.setItem('projectTasksData', JSON.stringify(projectTasksData));
+        localStorage.setItem('clickedStatus', status);
+        
+        // 根据显示的名称转换为对应的状态参数用于路由跳转
+        let statusParam = '';
+        switch(status) {
+          case '未开始':
+            statusParam = '未开始';
+            break;
+          case '进行中':
+            statusParam = '进行中';
+            break;
+          case '已完成':
+          case '已验收':
+            statusParam = '已完成';
+            break;
+          default:
+            statusParam = status; // 保持原始状态名称
+        }
+        
+        console.log('转换后的状态参数:', statusParam);
+        // 跳转到项目状态子任务详情页面，传递状态参数
+        router.push({ 
+          name: 'ProjectStatusSubtasksDetail', 
+          params: { status: statusParam } 
+        });
+      } catch (error) {
+        console.error('获取project_tasks数据失败:', error);
+        ElMessage.error('获取项目任务数据失败');
+      }
     });
   } catch (error) {
     console.error('初始化项目类型饼图失败:', error);
@@ -1261,7 +1397,13 @@ const initGantt = async () => {
       ganttChart = null;
     }
     
-    ganttChart = echarts.init(ganttRef.value);
+    try {
+      ganttChart = echarts.init(ganttRef.value);
+      console.log('甘特图初始化成功');
+    } catch (initError) {
+      console.error('甘特图初始化失败:', initError);
+      return;
+    }
     
     // 如果没有数据，显示空图表
     if (!ganttData || ganttData.length === 0) {
