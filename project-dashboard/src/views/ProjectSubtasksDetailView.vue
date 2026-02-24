@@ -230,32 +230,52 @@ const fetchSubtasksData = async () => {
     }
 
     // 直接使用新API根据项目标识符获取子任务数据
-    const projectSubtasksResponse = await projectApi.getProjectSubtasks(projectIdentifier);
-    console.log('项目子任务数据:', projectSubtasksResponse);
-    
-    // 标准化字段名，确保所有任务都有统一的字段结构
-    const standardizedTasks = projectSubtasksResponse.map(task => {
-      // 从任务对象中提取所有可能的字段名
-      return {
-        ...task,
-        task_name: task.task_name || task.taskName || task.task_name || task.name || '未知任务',
-        wbs_code: task.wbs_code || task.wbsNo || task.wbs_code || task.wbsCode || task.wbs_no || '',
-        task_owner: task.task_owner || task.owner || task.task_owner || task.taskOwner || task.responsible || '未指定',
-        planned_start_date: task.planned_start_date || task.planStart || task.planned_start_date || task.plan_start || task.plannedStart || '',
-        planned_end_date: task.planned_end_date || task.planEnd || task.planned_end_date || task.plan_end || task.plannedEnd || '',
-        actual_start_date: task.actual_start_date || task.actual_start_date || task.actualStart || task.actual_start || task['actual-start-time'] || '',
-        actual_end_date: task.actual_end_date || task.actual_end_date || task.actualEnd || task.actual_end || task['actual-end-time'] || '',
-        progress: (task.progress && typeof task.progress === 'string' && !task.progress.endsWith('%')) ? `${task.progress}%` : (task.progress || '0%'),
-        task_status: task.task_status || task.status || task.task_status || task.taskStatus || task.Status || '未开始'
-      };
-    });
-    
-    console.log(`最终找到 ${standardizedTasks.length} 个任务属于项目 ${projectName.value}`);
-    console.log('标准化后的任务数据:', standardizedTasks);
-    subtasksData.value = standardizedTasks;
-    
-    // 初始化甘特图
-    await initGanttChart();
+    console.log('准备调用API，项目标识符:', projectIdentifier);
+    try {
+      const projectSubtasksResponse = await projectApi.getProjectSubtasks(projectIdentifier);
+      console.log('项目子任务数据:', projectSubtasksResponse);
+      
+      // 标准化字段名，确保所有任务都有统一的字段结构
+      const standardizedTasks = projectSubtasksResponse.map(task => {
+        // 从任务对象中提取所有可能的字段名
+        return {
+          ...task,
+          task_name: task.task_name || task.taskName || task.task_name || task.name || '未知任务',
+          wbs_code: task.wbs_code || task.wbsNo || task.wbs_code || task.wbsCode || task.wbs_no || '',
+          task_owner: task.task_owner || task.owner || task.task_owner || task.taskOwner || task.responsible || '未指定',
+          planned_start_date: task.planned_start_date || task.planStart || task.planned_start_date || task.plan_start || task.plannedStart || '',
+          planned_end_date: task.planned_end_date || task.planEnd || task.planned_end_date || task.plan_end || task.plannedEnd || '',
+          actual_start_date: task.actual_start_date || task.actual_start_date || task.actualStart || task.actual_start || task['actual-start-time'] || '',
+          actual_end_date: task.actual_end_date || task.actual_end_date || task.actualEnd || task.actual_end || task['actual-end-time'] || '',
+          progress: (task.progress && typeof task.progress === 'string' && !task.progress.endsWith('%')) ? `${task.progress}%` : (task.progress || '0%'),
+          task_status: task.task_status || task.status || task.task_status || task.taskStatus || task.Status || '未开始'
+        };
+      });
+      
+      console.log(`最终找到 ${standardizedTasks.length} 个任务属于项目 ${projectName.value}`);
+      console.log('标准化后的任务数据:', standardizedTasks);
+      subtasksData.value = standardizedTasks;
+      
+      // 初始化甘特图
+      await initGanttChart();
+    } catch (apiError) {
+      console.error('API调用失败:', apiError);
+      console.error('错误详情:', {
+        message: apiError.message,
+        response: apiError.response,
+        request: apiError.request,
+        config: apiError.config
+      });
+      
+      // 显示用户友好的错误信息
+      if (apiError.response) {
+        console.error('HTTP错误状态:', apiError.response.status);
+        console.error('HTTP错误数据:', apiError.response.data);
+      }
+      
+      // 即使出错也要隐藏加载状态
+      subtasksData.value = [];
+    }
   } catch (error) {
     console.error('获取子任务数据失败:', error);
     console.error(error.stack);

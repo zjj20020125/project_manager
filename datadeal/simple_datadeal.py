@@ -2,7 +2,7 @@
 import os
 import re
 import glob
-from datetime import datetime
+from datetime import datetime, date
 import sys
 import json
 import mysql.connector
@@ -84,53 +84,91 @@ def get_or_create_project_id(project_name, manager_name, planned_start, planned_
 
 def determine_task_status(planned_start, planned_end, actual_start, actual_end, lag_days):
     """
-    根据条件确定任务状态
-    完成：滞后度一列中为0的，或者说实际开始时间，实际完成时间早于或者等于预计开始时间，预计完成时间
-    延期完成：实际开始时间，实际完成时间晚于预计开始时间，预计完成时间
-    异常：实际开始时间，实际完成时间为空
-    进行中：根据实时的日期，处于预计完成时间跟预计开始时间中间，只填写了实际开始时间
+    根据新标准判定子任务状态 - 细化状态分类
+    
+    状态判断的核心逻辑：
+    1. 已完成的任务：实际开始和结束时间都有数据
+       - 按时完成：实际时间完全在计划时间范围内
+       - 延期完成：实际结束时间超过计划结束时间
+       - 完成：特殊情况（其他完成情况）
+    
+    2. 进行中的任务：只有实际开始时间，没有实际结束时间
+       - 进行中：当前日期在计划时间范围内
+       - 异常：当前日期超过计划结束时间
+    
+    3. 未启动的任务：实际开始和结束时间都没有数据
+       - 未开始：当前日期在计划开始时间之前
+       - 异常：当前日期在计划时间范围内或之后
     """
     current_date = datetime.now().date()
     
-    # 检查异常情况：实际开始时间或实际完成时间为空
-    if actual_start is None or actual_end is None:
-        if actual_start is None and actual_end is None:
-            return "异常"
-        elif actual_start is not None and actual_end is None:
-            # 如果仅有实际开始时间，检查是否在计划范围内
-            if planned_start and planned_end and planned_start <= current_date <= planned_end:
-                return "进行中"
-            else:
-                return "异常"
-        elif actual_start is None and actual_end is not None:
-            return "异常"
-    
-    # 如果实际开始和完成时间都存在
-    if actual_start and actual_end:
-        # 检查是否为延期完成：实际开始时间或实际完成时间晚于预计开始时间或预计完成时间
-        if ((planned_start and actual_start > planned_start) or 
-            (planned_end and actual_end > planned_end)):
+    # 情况1：已完成的任务（实际开始和结束时间都有数据）
+    if actual_start is not None and actual_end is not None:
+        # 按时完成：实际时间完全在计划时间范围内
+        if (planned_start and planned_end and 
+            planned_start <= actual_start <= planned_end and 
+            planned_start <= actual_end <= planned_end):
+            return "按时完成"
+        
+        # 延期完成：实际结束时间超过计划结束时间
+        elif planned_end and actual_end > planned_end:
             return "延期完成"
-        # 检查是否为完成：实际开始时间完成时间早于或等于预计开始时间和完成时间
-        elif ((planned_start and actual_start <= planned_start) and 
-              (planned_end and actual_end <= planned_end)):
-            return "完成"
-        # 如果在计划时间范围内完成
-        elif ((planned_start and planned_end) and 
-              (planned_start <= actual_start <= planned_end) and 
-              (planned_end and actual_end <= planned_end)):
-            return "完成"
+        
+        # 完成：其他特殊情况
         else:
-            return "延期完成"
+            return "完成"
     
-    # 检查进行中：当前日期在计划开始和结束之间，且只有实际开始时间
-    if (planned_start and planned_end and 
-        planned_start <= current_date <= planned_end and 
-        actual_start is not None and actual_end is None):
-        return "进行中"
+    # 情况2：进行中的任务（只有实际开始时间，没有实际结束时间）
+    elif actual_start is not None and actual_end is None:
+        # 如果既有实际开始时间又有计划时间
+        if planned_start and planned_end:
+            # 如果实际开始时间在计划时间范围内
+            if planned_start <= actual_start <= planned_end:
+                # 再检查当前日期是否已经超过计划结束时间
+                if current_date > planned_end:
+                    return "异常"  # 超期进行中，标记为异常
+                else:
+                    return "进行中"
+            
+            # 如果实际开始时间早于计划开始时间
+            elif actual_start < planned_start:
+                # 检查当前日期是否已经超过计划结束时间
+                if current_date > planned_end:
+                    return "异常"
+                else:
+                    return "进行中"
+            
+            # 如果实际开始时间晚于计划结束时间
+            elif actual_start > planned_end:
+                return "异常"
+        
+        # 如果没有计划时间，但有实际开始时间，则认为是进行中
+        elif actual_start:
+            return "进行中"
+        
+        # 默认情况
+        else:
+            return "进行中"
     
-    # 默认为异常
-    return "异常"
+    # 情况3：未启动的任务（实际开始和结束时间都没有数据）
+    elif actual_start is None and actual_end is None:
+        # 未开始：当前日期在计划开始时间之前
+        if planned_start and current_date < planned_start:
+            return "未开始"
+        
+        # 异常：当前日期在计划时间范围内（应该已开始但没开始）
+        # 或当前日期超过计划结束时间（严重滞后）
+        elif planned_start and planned_end:
+            if planned_start <= current_date <= planned_end or current_date > planned_end:
+                return "异常"
+        
+        # 默认情况
+        else:
+            return "未开始"
+    
+    # 其他异常情况
+    else:
+        return "异常"
 
 def insert_tasks_to_db(project_id, project_name, manager_name, excel_data, overwrite=False):
     """将任务信息插入到project_tasks表"""
@@ -402,8 +440,16 @@ def extract_date_from_cell(cell_value):
         return None
     
     # 如果已经是日期对象，直接返回
-    if isinstance(cell_value, (datetime)):
+    if isinstance(cell_value, datetime):
+        # 检查是否为NaT
+        if str(cell_value) == 'NaT':
+            return None
         return cell_value.date()
+    elif isinstance(cell_value, date):
+        # 检查是否为NaT
+        if str(cell_value) == 'NaT':
+            return None
+        return cell_value
     
     # 如果是字符串，尝试解析
     if isinstance(cell_value, str):
@@ -433,6 +479,9 @@ def extract_date_from_cell(cell_value):
     if isinstance(cell_value, (int, float)):
         try:
             # Excel日期是从1900年1月1日开始的天数
+            # 处理可能的NaN值
+            if str(cell_value) == 'nan' or cell_value != cell_value:  # NaN检查
+                return None
             date_from_serial = datetime.fromordinal(int(693594 + cell_value))  # 693594是datetime(1900, 1, 1).toordinal()
             return date_from_serial.date()
         except:
@@ -545,20 +594,105 @@ def analyze_excel_data(data_list):
                     actual_ends.append(date_val)
     
     # 计算最早的计划开始时间和最晚的计划结束时间
-    earliest_planned_start = min(planned_starts) if planned_starts else None
-    latest_planned_end = max(planned_ends) if planned_ends else None
-    earliest_actual_start = min(actual_starts) if actual_starts else None
-    latest_actual_end = max(actual_ends) if actual_ends else None
+    # 过滤掉NaT值后再进行比较
+    filtered_planned_starts = [d for d in planned_starts if d is not None and str(d) != 'NaT']
+    filtered_planned_ends = [d for d in planned_ends if d is not None and str(d) != 'NaT']
+    filtered_actual_starts = [d for d in actual_starts if d is not None and str(d) != 'NaT']
+    filtered_actual_ends = [d for d in actual_ends if d is not None and str(d) != 'NaT']
     
-    # 根据数据确定项目状态
-    if latest_actual_end and latest_actual_end < datetime.now().date():
-        status = "已完成"
-    elif earliest_actual_start:
-        status = "进行中"
-    elif earliest_planned_start and earliest_planned_start > datetime.now().date():
-        status = "未开始"
+    earliest_planned_start = min(filtered_planned_starts) if filtered_planned_starts else None
+    latest_planned_end = max(filtered_planned_ends) if filtered_planned_ends else None
+    earliest_actual_start = min(filtered_actual_starts) if filtered_actual_starts else None
+    
+    # 修改：项目实际结束时间取最后一个子任务的实际完成时间，即使是空值也要取
+    # 按照数据在Excel中的顺序，严格取最后一行最后一个实际结束时间字段的值
+    latest_actual_end = None
+    if data_list:
+        # 直接取最后一行数据
+        last_row = data_list[-1]
+        last_actual_end_value = None
+        
+        # 遍历最后一行的所有列，找出所有实际结束时间相关的字段
+        actual_end_fields = []
+        for col_name, col_value in last_row.items():
+            col_name_clean = col_name.strip().replace('\u3000', '').replace(' ', '')
+            col_name_lower = col_name_clean.lower()
+            
+            # 检查是否为实际结束时间列
+            if any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower 
+                   for keyword in [c.replace('\u3000', '').replace(' ', '') for c in actual_end_cols]):
+                actual_end_fields.append((col_name, col_value))
+                last_actual_end_value = col_value  # 记录最后一个匹配的字段值
+        
+        # 如果找到了实际结束时间字段，取最后一个字段的值（包括None）
+        if actual_end_fields:
+            # 取最后一个实际结束时间字段的值
+            last_field_name, last_field_value = actual_end_fields[-1]
+            latest_actual_end = extract_date_from_cell(last_field_value)
+        else:
+            # 如果最后一行没有实际结束时间字段，在整个数据中查找
+            # 从后往前查找，找到最后一个有实际结束时间的记录
+            for row in reversed(data_list):
+                row_actual_ends = []
+                for col_name, col_value in row.items():
+                    col_name_clean = col_name.strip().replace('\u3000', '').replace(' ', '')
+                    col_name_lower = col_name_clean.lower()
+                    
+                    if any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower 
+                           for keyword in [c.replace('\u3000', '').replace(' ', '') for c in actual_end_cols]):
+                        date_val = extract_date_from_cell(col_value)
+                        row_actual_ends.append((col_name, col_value, date_val))
+                
+                # 如果这一行有实际结束时间字段，取最后一个
+                if row_actual_ends:
+                    last_col_name, last_col_value, last_date_val = row_actual_ends[-1]
+                    latest_actual_end = last_date_val
+                    break
+    
+    # 根据新的状态判断逻辑确定项目状态
+    current_date = datetime.now().date()
+    
+    # 情况1：已完成的任务（实际开始和结束时间都有数据）
+    if latest_actual_end and latest_actual_end < current_date:
+        # 检查是否延期完成
+        if latest_planned_end and latest_actual_end > latest_planned_end:
+            status = "延期完成"
+        else:
+            status = "完成"
+    
+    # 情况2：进行中的任务（只有实际开始时间，没有实际结束时间）
+    elif earliest_actual_start and not latest_actual_end:
+        # 进行中：当前日期在计划时间范围内
+        if (earliest_planned_start and latest_planned_end and 
+            earliest_planned_start <= current_date <= latest_planned_end):
+            status = "进行中"
+        # 未开始：当前日期在计划开始时间之前
+        elif earliest_planned_start and current_date < earliest_planned_start:
+            status = "未开始"
+        # 异常：当前日期超过计划结束时间
+        elif latest_planned_end and current_date > latest_planned_end:
+            status = "异常"
+        else:
+            status = "进行中"
+    
+    # 情况3：未启动的任务（实际开始和结束时间都没有数据）
+    elif not earliest_actual_start and not latest_actual_end:
+        # 未开始：当前日期在计划开始时间之前
+        if earliest_planned_start and current_date < earliest_planned_start:
+            status = "未开始"
+        # 异常：当前日期在计划时间范围内（应该已开始但没开始）
+        elif (earliest_planned_start and latest_planned_end and 
+              earliest_planned_start <= current_date <= latest_planned_end):
+            status = "异常"
+        # 严重异常：当前日期超过计划结束时间（严重滞后）
+        elif latest_planned_end and current_date > latest_planned_end:
+            status = "异常"
+        else:
+            status = "未开始"
+    
+    # 其他情况
     else:
-        status = "已计划"
+        status = "异常"
     
     return earliest_planned_start, latest_planned_end, earliest_actual_start, latest_actual_end, status
 

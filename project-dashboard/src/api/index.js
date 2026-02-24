@@ -161,6 +161,12 @@ export const projectApi = {
     return apiClient.get(`/v1/owner-abnormal-tasks/${encodedOwner}`);
   },
   
+  // 获取指定负责人的异常任务详情（区分首个异常节点和进度推迟）
+  getAbnormalTaskDetailByOwner: (owner) => {
+    const encodedOwner = encodeURIComponent(owner);
+    return apiClient.get(`/v1/task/abnormal-detail/${encodedOwner}`);
+  },
+  
   // 根据任务状态获取任务列表
   getTasksByStatus: (status, params = {}) => {
     const { page = 1, limit = 100 } = params;
@@ -278,6 +284,21 @@ export const projectApi = {
       console.error('导出项目数据失败:', error);
       throw error;
     });
+  },
+  
+  // 删除单个项目
+  deleteProject: (projectId) => {
+    return apiClient.delete(`/v1/projects/${projectId}`);
+  },
+  
+  // 批量删除项目
+  batchDeleteProjects: (projectIds) => {
+    return apiClient.post('/v1/projects/batch-delete', projectIds);
+  },
+  
+  // 修改项目信息（带项目ID）
+  updateProject: (projectId, projectData) => {
+    return apiClient.put(`/v1/projects/${projectId}`, projectData);
   }
 };
 

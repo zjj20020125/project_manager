@@ -17,8 +17,9 @@
     :statusOptions="[
       { label: '未开始', value: '未开始' },
       { label: '进行中', value: '进行中' },
-      { label: '已完成', value: '已完成' },
-      { label: '已验收', value: '已验收' }
+      { label: '完成', value: '完成' },
+      { label: '延期完成', value: '延期完成' },
+      { label: '异常', value: '异常' }
     ]"
   />
 </template>

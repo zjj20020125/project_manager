@@ -1,3 +1,4 @@
+
 <template>
   <el-container style="min-height: 100vh;">
     <!-- 固定的顶部导航 -->
@@ -242,8 +243,9 @@ const props = defineProps({
     default: () => [
       { label: '未开始', value: '未开始' },
       { label: '进行中', value: '进行中' },
-      { label: '已完成', value: '已完成' },
-      { label: '已验收', value: '已验收' }
+      { label: '完成', value: '完成' },
+      { label: '延期完成', value: '延期完成' },
+      { label: '异常', value: '异常' }
     ]
   }
 })
@@ -312,7 +314,7 @@ const fetchTasks = async () => {
 // 计算统计数据
 const calculateStats = () => {
   const completed = tasks.value.filter(task => 
-    task.status === '完成' || task.status === '延期完成'  // 完成 + 延期完成 = 已完成任务
+    task.status === '按时完成' || task.status === '延期完成' || task.status === '完成'  // 所有完成类状态
   ).length
   const pending = tasks.value.filter(task => 
     task.status === '异常'  // 异常 = 待完成任务
@@ -321,7 +323,7 @@ const calculateStats = () => {
   stats.value = {
     totalTasks: tasks.value.length,
     completedTasks: completed,
-    pendingTasks: pending  // 使用实际的待完成任务数，而不是总数减去已完成数
+    pendingTasks: pending
   }
 }
 
@@ -360,13 +362,10 @@ const getStatusTagType = (status) => {
     case '进行中':
     case 'in_progress':
       return 'info'
-    case '已完成':
     case '完成':
+    case '已完成':
     case 'completed':
       return 'success'
-    case '已验收':
-    case 'accepted':
-      return 'primary'
     case '延期完成':
     case 'overdue_completed':
       return 'danger'

@@ -85,7 +85,7 @@
                   :fit="true"
                   v-loading="abnormalOwnerStatsLoading"
                 >
-                  <el-table-column prop="owner_name" label="负责人姓名" align="center" header-align="center">
+                  <el-table-column prop="owner_name" label="负责人姓名" align="center" header-align="center" width="120">
                     <template #default="scope">
                       <span 
                         @click="goToOwnerTaskDetail(scope.row.owner_name)"
@@ -95,9 +95,19 @@
                       </span>
                     </template>
                   </el-table-column>
-                  <el-table-column prop="task_count" label="异常子任务数" align="center" header-align="center">
+                  <el-table-column prop="first_abnormal_count" label="首个异常节点" align="center" header-align="center" width="120">
                     <template #default="scope">
-                      <el-tag type="danger" style="text-align: center">{{ scope.row.task_count }} 项</el-tag>
+                      <el-tag type="danger" style="text-align: center">{{ scope.row.first_abnormal_count || 0 }} 项</el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="delayed_progress_count" label="进度推迟" align="center" header-align="center" width="120">
+                    <template #default="scope">
+                      <el-tag type="warning" style="text-align: center">{{ scope.row.delayed_progress_count || 0 }} 项</el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="total_count" label="总计" align="center" header-align="center" width="80">
+                    <template #default="scope">
+                      <strong>{{ scope.row.total_count || 0 }} 项</strong>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -145,7 +155,7 @@
           <el-card shadow="hover" margin-bottom="20px">
             <div slot="header" class="card-header">
               <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span>{{ selectedProjectName || '项目任务甘特图' }}</span>
+                <span style="flex: 1; text-align: right; font-size: 18px; margin-right: 200px;">{{ selectedProjectName || '项目任务甘特图' }}</span>
                 <el-select v-model="selectedProjectId" placeholder="请选择项目" style="width: 200px;" @change="updateGanttChart">
                   <el-option
                     v-for="item in projectOptions"
@@ -158,14 +168,13 @@
               </div>
             </div>
             <div ref="ganttRef" class="gantt-container"></div>
-            <button @click="debugGanttData" style="margin-top: 10px;">调试甘特图数据</button>
           </el-card>
 
           <!-- 任务进度明细表 -->
           <el-card shadow="hover">
             <div slot="header" class="card-header">
               <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span>项目进度明细表</span>
+                <span style="font-size: 18px; flex: 1; text-align: center;">项目进度明细表</span>
                 <div>
                   <el-button type="primary" size="small" @click="showExportDialog">导出</el-button>
                   <el-button type="success" size="small" @click="showImportDialog">导入</el-button>
@@ -214,6 +223,17 @@
                 </template>
               </el-table-column>
               <el-table-column prop="created_at" label="创建时间" width="180" align="center" header-align="center" />
+              <el-table-column label="操作" width="120" align="center" header-align="center">
+                <template #default="scope">
+                  <el-button 
+                    type="danger" 
+                    size="small" 
+                    @click="showDeleteDialog(scope.row)"
+                  >
+                    删除
+                  </el-button>
+                </template>
+              </el-table-column>
             </el-table>
           </el-card>
 
@@ -300,6 +320,46 @@
               <span class="dialog-footer">
                 <el-button @click="editProjectDialogVisible = false">取消</el-button>
                 <el-button type="primary" @click="confirmEditProject">确认修改</el-button>
+              </span>
+            </template>
+          </el-dialog>
+
+          <!-- 删除确认对话框 -->
+          <el-dialog v-model="deleteDialogVisible" title="删除项目确认" width="500px">
+            <div v-if="projectsToDelete.length > 0">
+              <p>确定要删除以下 {{ projectsToDelete.length }} 个项目吗？</p>
+              <el-table :data="projectsToDelete" border style="width: 100%; margin: 15px 0;" max-height="200">
+                <el-table-column prop="project_name" label="项目名称" />
+                <el-table-column prop="project_manager" label="项目经理" />
+              </el-table>
+              <el-alert
+                title="注意：删除项目将同时删除该项目的所有相关任务数据，此操作不可恢复！"
+                type="warning"
+                show-icon
+                :closable="false"
+              />
+            </div>
+            <div v-else-if="projectToDelete">
+              <p>确定要删除项目 <strong>{{ projectToDelete.project_name }}</strong> 吗？</p>
+              <p>项目经理：<strong>{{ projectToDelete.project_manager }}</strong></p>
+              <el-alert
+                title="注意：删除项目将同时删除该项目的所有相关任务数据，此操作不可恢复！"
+                type="warning"
+                show-icon
+                :closable="false"
+                style="margin-top: 15px;"
+              />
+            </div>
+            <template #footer>
+              <span class="dialog-footer">
+                <el-button @click="deleteDialogVisible = false">取消</el-button>
+                <el-button 
+                  type="danger" 
+                  @click="confirmDelete" 
+                  :loading="deleteLoading"
+                >
+                  确认删除
+                </el-button>
               </span>
             </template>
           </el-dialog>
@@ -398,6 +458,31 @@ const multipleSelection = ref([]) // 选中的项目
 const selectedFile = ref(null)
 const uploadRef = ref(null)
 const uploadLoading = ref(false) // 导入加载状态
+
+// 删除相关
+const deleteDialogVisible = ref(false)
+const deleteLoading = ref(false)
+const projectToDelete = ref(null) // 单个删除的项目
+
+// 修改项目相关状态
+const modifyDialogVisible = ref(false)
+const modifyLoading = ref(false)
+const projectToModify = ref(null) // 要修改的项目
+const modifyFormRef = ref()
+const modifyFormData = ref({
+  project_name: '',
+  project_manager: '',
+  start_date: '',
+  end_date: '',
+  status: '',
+  progress: '',
+  budget: '',
+  actual_cost: '',
+  remarks: '',
+  modifier_name: '',
+  remarks_for_modification: ''
+})
+const projectsToDelete = ref([]) // 批量删除的项目
 
 // 在setup函数中返回uploadRef，以便在模板中使用
 
@@ -561,11 +646,35 @@ const goToProjectSubtasks = (projectId, projectName) => {
 
 // 跳转到异常子任务负责人详情页面
 const goToOwnerTaskDetail = (ownerName) => {
-  // 使用路由跳转到异常子任务负责人详情页面
-  router.push({ 
-    name: 'AbnormalOwnerDetail', 
-    params: { owner: encodeURIComponent(ownerName || '') }
-  })
+  console.log('点击负责人跳转:', ownerName);
+  console.log('当前统计数据:', abnormalTaskOwnerStats.value);
+  
+  // 查找该负责人的统计信息
+  const ownerStat = abnormalTaskOwnerStats.value.find(stat => stat.owner_name === ownerName);
+  console.log('找到的统计信息:', ownerStat);
+  
+  try {
+    // 使用完整的路径跳转作为备选方案
+    const statsParam = ownerStat ? encodeURIComponent(JSON.stringify(ownerStat)) : '';
+    const fullPath = `/abnormal-owner-detail/${encodeURIComponent(ownerName)}?stats=${statsParam}`;
+    
+    console.log('完整跳转路径:', fullPath);
+    window.location.href = fullPath;
+    
+    // 如果上面的方法不行，再尝试路由跳转
+    // router.push({ 
+    //   name: 'AbnormalOwnerDetail', 
+    //   params: { 
+    //     owner: ownerName
+    //   },
+    //   query: {
+    //     stats: ownerStat ? JSON.stringify(ownerStat) : '{}'
+    //   }
+    // });
+    console.log('跳转成功');
+  } catch (error) {
+    console.error('跳转失败:', error);
+  }
 }
 
 // 跳转到项目状态详情页面
@@ -784,6 +893,130 @@ const confirmExport = async () => {
     } else {
       ElMessage.error('导出失败，请检查网络连接或联系管理员');
     }
+  }
+};
+
+// 显示删除对话框（单个项目）
+const showDeleteDialog = (project) => {
+  projectToDelete.value = project;
+  projectsToDelete.value = [];
+  deleteDialogVisible.value = true;
+};
+
+// 显示批量删除对话框
+const showBatchDeleteDialog = () => {
+  if (multipleSelection.value.length === 0) {
+    ElMessage.warning('请先选择要删除的项目');
+    return;
+  }
+  
+  projectToDelete.value = null;
+  projectsToDelete.value = [...multipleSelection.value];
+  deleteDialogVisible.value = true;
+};
+
+// 确认删除
+const confirmDelete = async () => {
+  deleteLoading.value = true;
+  try {
+    let result;
+    
+    if (projectsToDelete.value.length > 0) {
+      // 批量删除
+      const projectIds = projectsToDelete.value.map(p => p.project_id);
+      result = await projectApi.batchDeleteProjects(projectIds);
+      ElMessage.success(`成功删除 ${result.deleted_projects} 个项目，共删除 ${result.deleted_tasks_total} 条任务数据`);
+    } else if (projectToDelete.value) {
+      // 单个删除
+      result = await projectApi.deleteProject(projectToDelete.value.project_id);
+      ElMessage.success(`项目 '${result.project_name}' 删除成功，共删除 ${result.deleted_tasks_count} 条任务数据`);
+    }
+    
+    // 关闭对话框
+    deleteDialogVisible.value = false;
+    
+    // 重置删除相关状态
+    projectToDelete.value = null;
+    projectsToDelete.value = [];
+    multipleSelection.value = [];
+    
+    // 重新获取项目数据以更新列表
+    await fetchProjectDetails();
+    await fetchProjectCategoryStats();
+    
+  } catch (error) {
+    console.error('删除项目失败:', error);
+    if (error.response) {
+      ElMessage.error(`删除失败: ${error.response.status} - ${error.response.data?.detail || '未知错误'}`);
+    } else if (error.message) {
+      ElMessage.error(`删除失败: ${error.message}`);
+    } else {
+      ElMessage.error('删除失败，请检查网络连接或联系管理员');
+    }
+  } finally {
+    deleteLoading.value = false;
+  }
+};
+
+// 显示修改对话框
+const showModifyDialog = (row) => {
+  projectToModify.value = row;
+  // 初始化表单数据
+  modifyFormData.value = {
+    project_name: row.project_name || '',
+    project_manager: row.project_manager || '',
+    start_date: row.planned_start_date || '',
+    end_date: row.planned_end_date || '',
+    status: row.project_status || '',
+    progress: row.progress !== undefined ? parseFloat(row.progress) : 0,
+    budget: row.budget !== undefined ? parseFloat(row.budget) : 0,
+    actual_cost: row.actual_cost !== undefined ? parseFloat(row.actual_cost) : 0,
+    remarks: row.remarks || '',
+    modifier_name: '',
+    remarks_for_modification: ''
+  };
+  modifyDialogVisible.value = true;
+};
+
+// 处理修改关闭
+const handleModifyClose = () => {
+  modifyDialogVisible.value = false;
+  projectToModify.value = null;
+  if (modifyFormRef.value) {
+    modifyFormRef.value.resetFields();
+  }
+};
+
+// 确认修改
+const confirmModify = async () => {
+  if (!modifyFormRef.value) return;
+  
+  try {
+    await modifyFormRef.value.validate();
+    modifyLoading.value = true;
+    
+    // 准备修改数据
+    const modifyData = {
+      ...modifyFormData.value,
+      modifier_ip: '127.0.0.1' // 这里可以获取真实的IP地址
+    };
+    
+    // 调用API修改项目
+    const response = await projectApi.updateProject(projectToModify.value.project_id, modifyData);
+    
+    if (response.success) {
+      ElMessage.success('项目修改成功');
+      modifyDialogVisible.value = false;
+      // 重新加载项目数据
+      await fetchProjectDetails();
+    } else {
+      ElMessage.error(response.message || '修改失败');
+    }
+  } catch (error) {
+    console.error('修改项目失败:', error);
+    ElMessage.error('修改项目失败: ' + (error.message || '未知错误'));
+  } finally {
+    modifyLoading.value = false;
   }
 };
 
@@ -1123,26 +1356,43 @@ const initTypePie = async () => {
     
     typePieChart = echarts.init(typePieRef.value)
     
-    // 根据状态名称设置颜色
-    const getColorForStatus = (statusName) => {
+    // 根据状态名称设置颜色 - 遵循项目规范：异常状态使用红色
+    const getColorForStatus = (statusName, index) => {
+      // 首先检查是否为异常状态，异常状态必须使用红色
       if (statusName.includes('异常')) {
-        return '#f56c6c'; // 红色
-      } else if (statusName.includes('延期完成')) {
-        return '#e6a23c'; // 黄色
-      } else if (statusName.includes('完成')) {
-        return '#67c23a'; // 绿色
-      } else if (statusName.includes('延期')) {
-        return '#e6a23c'; // 黄色
-      } else {
-        return '#409eff'; // 默认蓝色
+        return '#f56c6c'; // 红色 - 符合项目规范
       }
+      
+      // 对于非异常状态，使用对比明显的颜色避免相邻数据颜色相近
+      const distinctColors = [
+        '#4ECDC4', // 青绿色
+        '#45B7D1', // 蓝色
+        '#96CEB4', // 绿色
+        '#FFEAA7', // 浅黄色
+        '#DDA0DD', // 梅花色
+        '#98D8C8', // 薄荷绿
+        '#F7DC6F', // 浅黄色
+        '#BB8FCE', // 浅紫色
+        '#85C1E9', // 浅蓝色
+        '#5470c6', // 蓝色
+        '#91cc75', // 绿色
+        '#fac858', // 黄色
+        '#73c0de', // 浅蓝色
+        '#3ba272', // 深绿色
+        '#fc8452'  // 橙色
+      ];
+      
+      // 根据索引循环使用颜色，确保不同状态使用不同颜色
+      // 由于异常状态已经占用红色，所以需要调整索引
+      const adjustedIndex = statusName.includes('异常') ? 0 : index;
+      return distinctColors[adjustedIndex % distinctColors.length];
     };
     
     // 为数据项添加颜色
-    const coloredPieData = pieData.map(item => ({
+    const coloredPieData = pieData.map((item, index) => ({
       ...item,
       itemStyle: {
-        color: getColorForStatus(item.name)
+        color: getColorForStatus(item.name, index)
       }
     }));
     
@@ -1182,6 +1432,7 @@ const initTypePie = async () => {
       // 根据点击的扇形图部分传递相应的状态参数
       let status = params.name; // 直接使用扇形图显示的名称
       console.log('点击的状态:', status)
+      console.log('准备跳转到ProjectStatusSubtasksDetail页面')
       
       try {
         // 调用新的API接口获取project_tasks表中匹配status的数据
@@ -1211,9 +1462,14 @@ const initTypePie = async () => {
         
         console.log('转换后的状态参数:', statusParam);
         // 跳转到项目状态子任务详情页面，传递状态参数
+        console.log('执行路由跳转...');
         router.push({ 
           name: 'ProjectStatusSubtasksDetail', 
           params: { status: statusParam } 
+        }).then(() => {
+          console.log('路由跳转成功');
+        }).catch((error) => {
+          console.error('路由跳转失败:', error);
         });
       } catch (error) {
         console.error('获取project_tasks数据失败:', error);
@@ -1284,18 +1540,25 @@ const initLoadBar = async () => {
     const managers = barData.map(item => item.name);
     const loads = barData.map(item => item.value);
     
-    // 为每个经理定义不同的颜色
+    // 为每个经理定义不同的颜色 - 使用更多对比明显的颜色
     const managerColors = [
-      '#3498db', // 蓝色
-      '#2ecc71', // 绿色
-      '#e74c3c', // 红色
-      '#9b59b6', // 紫色
-      '#f1c40f', // 黄色
-      '#1abc9c', // 青色
-      '#d35400', // 橙色
-      '#34495e', // 深灰
-      '#7f8c8d', // 灰色
-      '#e67e22', // 橙红
+      '#4ECDC4', // 青绿色
+      '#45B7D1', // 蓝色
+      '#96CEB4', // 绿色
+      '#FFEAA7', // 浅黄色
+      '#DDA0DD', // 梅花色
+      '#98D8C8', // 薄荷绿
+      '#F7DC6F', // 浅黄色
+      '#BB8FCE', // 浅紫色
+      '#85C1E9', // 浅蓝色
+      '#5470c6', // 蓝色
+      '#91cc75', // 绿色
+      '#fac858', // 黄色
+      '#73c0de', // 浅蓝色
+      '#3ba272', // 深绿色
+      '#fc8452', // 橙色
+      '#9a60b4', // 紫色
+      '#ea7ccc'  // 粉色
     ];
     
     // 为每个经理分配颜色
@@ -1360,8 +1623,11 @@ const initLoadBar = async () => {
 const initAbnormalTaskOwnerStats = async () => {
   abnormalOwnerStatsLoading.value = true;
   try {
+    console.log('开始获取异常节点负责人统计...');
     const stats = await projectApi.getAbnormalTaskOwnerStats();
+    console.log('异常节点负责人统计API返回数据:', stats);
     abnormalTaskOwnerStats.value = stats;
+    console.log('设置后的abnormalTaskOwnerStats:', abnormalTaskOwnerStats.value);
   } catch (error) {
     console.error('获取异常节点负责人统计失败:', error);
     ElMessage.error('获取异常节点负责人统计失败');

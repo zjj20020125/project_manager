@@ -379,7 +379,7 @@ async def get_task_gantt_data(project_name: str = None):
         return []
 
 # 12. 根据状态获取project_tasks表中的完整数据
-@router.get("/project-tasks/status/{status}")
+@router.get("/chart/project-tasks/status/{status}")
 async def get_project_tasks_by_status(status: str):
     """根据状态获取project_tasks表中的完整数据"""
     try:

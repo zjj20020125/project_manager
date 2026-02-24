@@ -18,6 +18,7 @@ import NcrStageDetail from '../views/ncr/NcrStageDetail.vue'
 import NcrItemDetail from '../views/ncr/NcrItemDetail.vue'
 import NcrHomePage from '../views/ncr/NcrHomePage.vue'
 import AbnormalOwnerDetailView from '../views/AbnormalOwnerDetailView.vue'
+import AbnormalTaskDetail from '../views/AbnormalTaskDetail.vue'
 
 const routes = [
   {
@@ -122,6 +123,12 @@ const routes = [
     path: '/abnormal-owner-detail/:owner',
     name: 'AbnormalOwnerDetail',
     component: AbnormalOwnerDetailView,
+    props: true
+  },
+  {
+    path: '/abnormal-task-detail/:ownerName',
+    name: 'AbnormalTaskDetail',
+    component: AbnormalTaskDetail,
     props: true
   }
 ]

@@ -132,53 +132,91 @@ async def import_projects(file: UploadFile = File(...), overwrite: bool = False)
 
 def determine_task_status_import(planned_start, planned_end, actual_start, actual_end, lag_days):
     """
-    根据条件确定任务状态
-    完成：滞后度一列中为0的，或者说实际开始时间，实际完成时间早于或者等于预计开始时间，预计完成时间
-    延期完成：实际开始时间，实际完成时间晚于预计开始时间，预计完成时间
-    异常：实际开始时间，实际完成时间为空
-    进行中：根据实时的日期，处于预计完成时间跟预计开始时间中间，只填写了实际开始时间
+    根据新标准判定子任务状态 - 与simple_datadeal.py保持一致，细化状态分类
+    
+    状态判断的核心逻辑：
+    1. 已完成的任务：实际开始和结束时间都有数据
+       - 按时完成：实际时间完全在计划时间范围内
+       - 延期完成：实际结束时间超过计划结束时间
+       - 完成：特殊情况（其他完成情况）
+    
+    2. 进行中的任务：只有实际开始时间，没有实际结束时间
+       - 进行中：当前日期在计划时间范围内
+       - 异常：当前日期超过计划结束时间
+    
+    3. 未启动的任务：实际开始和结束时间都没有数据
+       - 未开始：当前日期在计划开始时间之前
+       - 异常：当前日期在计划时间范围内或之后
     """
     current_date = datetime.now().date()
     
-    # 检查异常情况：实际开始时间或实际完成时间为空
-    if actual_start is None or actual_end is None:
-        if actual_start is None and actual_end is None:
-            return "异常"
-        elif actual_start is not None and actual_end is None:
-            # 如果仅有实际开始时间，检查是否在计划范围内
-            if planned_start and planned_end and planned_start <= current_date <= planned_end:
-                return "进行中"
-            else:
-                return "异常"
-        elif actual_start is None and actual_end is not None:
-            return "异常"
-    
-    # 如果实际开始和完成时间都存在
-    if actual_start and actual_end:
-        # 检查是否为延期完成
-        if ((planned_start and actual_start > planned_start) or 
-            (planned_end and actual_end > planned_end)):
+    # 情况1：已完成的任务（实际开始和结束时间都有数据）
+    if actual_start is not None and actual_end is not None:
+        # 按时完成：实际时间完全在计划时间范围内
+        if (planned_start and planned_end and 
+            planned_start <= actual_start <= planned_end and 
+            planned_start <= actual_end <= planned_end):
+            return "按时完成"
+        
+        # 延期完成：实际结束时间超过计划结束时间
+        elif planned_end and actual_end > planned_end:
             return "延期完成"
-        # 检查是否为完成
-        elif ((planned_start and actual_start <= planned_start) and 
-              (planned_end and actual_end <= planned_end)):
-            return "完成"
-        # 如果在计划时间范围内完成
-        elif ((planned_start and planned_end) and 
-              (planned_start <= actual_start <= planned_end) and 
-              (planned_end and actual_end <= planned_end)):
-            return "完成"
+        
+        # 完成：其他特殊情况
         else:
-            return "延期完成"
+            return "完成"
     
-    # 检查进行中
-    if (planned_start and planned_end and 
-        planned_start <= current_date <= planned_end and 
-        actual_start is not None and actual_end is None):
-        return "进行中"
+    # 情况2：进行中的任务（只有实际开始时间，没有实际结束时间）
+    elif actual_start is not None and actual_end is None:
+        # 如果既有实际开始时间又有计划时间
+        if planned_start and planned_end:
+            # 如果实际开始时间在计划时间范围内
+            if planned_start <= actual_start <= planned_end:
+                # 再检查当前日期是否已经超过计划结束时间
+                if current_date > planned_end:
+                    return "异常"  # 超期进行中，标记为异常
+                else:
+                    return "进行中"
+            
+            # 如果实际开始时间早于计划开始时间
+            elif actual_start < planned_start:
+                # 检查当前日期是否已经超过计划结束时间
+                if current_date > planned_end:
+                    return "异常"
+                else:
+                    return "进行中"
+            
+            # 如果实际开始时间晚于计划结束时间
+            elif actual_start > planned_end:
+                return "异常"
+        
+        # 如果没有计划时间，但有实际开始时间，则认为是进行中
+        elif actual_start:
+            return "进行中"
+        
+        # 默认情况
+        else:
+            return "进行中"
     
-    # 默认为异常
-    return "异常"
+    # 情况3：未启动的任务（实际开始和结束时间都没有数据）
+    elif actual_start is None and actual_end is None:
+        # 未开始：当前日期在计划开始时间之前
+        if planned_start and current_date < planned_start:
+            return "未开始"
+        
+        # 异常：当前日期在计划时间范围内（应该已开始但没开始）
+        # 或当前日期超过计划结束时间（严重滞后）
+        elif planned_start and planned_end:
+            if planned_start <= current_date <= planned_end or current_date > planned_end:
+                return "异常"
+        
+        # 默认情况
+        else:
+            return "未开始"
+    
+    # 其他异常情况
+    else:
+        return "异常"
 
 # 28. 导出项目数据
 @router.post("/projects/export")
@@ -254,3 +292,285 @@ async def export_projects(request_data: Dict):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"导出失败: {str(e)}")
+
+# 30. 修改项目信息并记录修改日志
+@router.put("/projects/{project_id}")
+async def update_project_with_log(project_id: int, project_data: dict):
+    """修改项目信息并记录修改日志"""
+    try:
+        # 获取修改人信息
+        modifier_name = project_data.get('modifier_name', '')
+        modifier_ip = project_data.get('modifier_ip', '')
+        remarks = project_data.get('remarks_for_modification', '')
+        
+        # 检查projects表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'projects'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            raise HTTPException(status_code=404, detail="projects表不存在")
+        
+        # 首先检查项目是否存在
+        check_project_sql = "SELECT * FROM projects WHERE project_id = %s"
+        old_project = execute_query(check_project_sql, (project_id,))
+        if not old_project:
+            raise HTTPException(status_code=404, detail=f"项目ID {project_id} 不存在")
+        
+        # 构建更新SQL
+        update_fields = []
+        update_params = []
+        
+        # 处理各个字段的更新
+        field_mapping = {
+            'project_name': project_data.get('project_name'),
+            'project_manager': project_data.get('project_manager'),
+            'planned_start_date': project_data.get('start_date'),
+            'planned_end_date': project_data.get('end_date'),
+            'project_status': project_data.get('status'),
+            'budget': project_data.get('budget'),
+            'actual_cost': project_data.get('actual_cost'),
+            'remarks': project_data.get('remarks')
+        }
+        
+        for field, value in field_mapping.items():
+            if value is not None and value != '':  # 只更新非空值
+                update_fields.append(f"{field} = %s")
+                update_params.append(value)
+        
+        # 添加进度字段（特殊处理）
+        if 'progress' in project_data and project_data['progress'] is not None:
+            update_fields.append("progress = %s")
+            update_params.append(float(project_data['progress']))
+        
+        if not update_fields:
+            raise HTTPException(status_code=400, detail="没有提供有效的更新字段")
+        
+        # 更新项目信息
+        update_params.append(project_id)
+        update_sql = f"UPDATE projects SET {', '.join(update_fields)} WHERE project_id = %s"
+        update_result = execute_query(update_sql, tuple(update_params))
+        
+        if update_result is None or update_result == 0:
+            raise HTTPException(status_code=400, detail="项目更新失败")
+        
+        # 记录修改日志
+        log_sql = """
+        INSERT INTO project_modifications 
+        (project_id, modifier_name, modifier_ip, modification_type, old_values, new_values, remarks)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        
+        # 准备修改前后的值
+        old_values = {}
+        new_values = {}
+        
+        for field, new_value in field_mapping.items():
+            old_value = old_project.get(field)
+            if new_value is not None and new_value != '' and str(new_value) != str(old_value):
+                old_values[field] = old_value
+                new_values[field] = new_value
+        
+        # 处理进度字段
+        if 'progress' in project_data:
+            old_progress = old_project.get('progress')
+            new_progress = project_data['progress']
+            if str(new_progress) != str(old_progress):
+                old_values['progress'] = old_progress
+                new_values['progress'] = new_progress
+        
+        # 插入修改日志
+        log_params = (
+            project_id,
+            modifier_name,
+            modifier_ip,
+            '项目信息修改',
+            json.dumps(old_values, ensure_ascii=False) if old_values else None,
+            json.dumps(new_values, ensure_ascii=False) if new_values else None,
+            remarks
+        )
+        
+        log_result = execute_query(log_sql, log_params)
+        
+        return {
+            "success": True,
+            "message": "项目修改成功",
+            "project_id": project_id,
+            "modified_fields": list(new_values.keys()),
+            "modifier_name": modifier_name,
+            "modification_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"修改项目出错: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"修改项目失败: {str(e)}")
+
+# 31. 获取项目列表
+@router.get("/projects-list")
+async def get_projects_list():
+    """获取项目列表"""
+    try:
+        # 检查projects表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'projects'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            print("警告: projects表不存在")
+            return []
+
+        # 检查必要字段是否存在
+        describe_sql = "DESCRIBE projects"
+        columns_result = execute_query(describe_sql, fetch_all=True)
+        if not columns_result:
+            print("警告: 无法获取projects表结构")
+            return []
+
+        column_names = [col['Field'] for col in columns_result if 'Field' in col]
+        required_columns = ['project_name']
+        missing_columns = [col for col in required_columns if col not in column_names]
+
+        if missing_columns:
+            print(f"警告: projects表缺少以下列: {missing_columns}")
+            return []
+
+        # 查询项目列表
+        projects_sql = """
+        SELECT DISTINCT project_id, project_name
+        FROM projects
+        ORDER BY project_name
+        """
+
+        projects_results = execute_query(projects_sql, fetch_all=True) or []
+
+        # 格式化返回数据
+        formatted_results = []
+        for result in projects_results:
+            if result is not None:
+                formatted_results.append({
+                    "project_id": result.get('project_id'),
+                    "project_name": result.get('project_name', '')
+                })
+
+        return formatted_results
+    except Exception as e:
+        print(f"获取项目列表数据出错: {e}")
+        return []
+
+# 32. 批量删除项目
+@router.post("/projects/batch-delete")
+async def batch_delete_projects(project_ids: List[int]):
+    """批量删除项目及其相关数据"""
+    try:
+        if not project_ids:
+            raise HTTPException(status_code=400, detail="请提供要删除的项目ID列表")
+        
+        # 检查projects表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'projects'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            raise HTTPException(status_code=404, detail="projects表不存在")
+        
+        # 验证所有项目ID都存在
+        placeholders = ','.join(['%s'] * len(project_ids))
+        check_sql = f"SELECT project_id FROM projects WHERE project_id IN ({placeholders})"
+        existing_projects = execute_query(check_sql, tuple(project_ids), fetch_all=True)
+        
+        if not existing_projects:
+            raise HTTPException(status_code=404, detail="指定的项目不存在")
+        
+        existing_ids = [proj['project_id'] for proj in existing_projects]
+        not_found_ids = [pid for pid in project_ids if pid not in existing_ids]
+        
+        if not_found_ids:
+            raise HTTPException(status_code=404, detail=f"以下项目ID不存在: {not_found_ids}")
+        
+        # 开始事务删除
+        deleted_count = 0
+        
+        # 删除相关的project_tasks数据
+        delete_project_tasks_sql = f"DELETE FROM project_tasks WHERE project_id IN ({placeholders})"
+        project_tasks_result = execute_query(delete_project_tasks_sql, tuple(project_ids))
+        
+        # 删除相关的子任务数据
+        delete_subtasks_sql = f"DELETE FROM subtasks WHERE project_id IN ({placeholders})"
+        subtasks_result = execute_query(delete_subtasks_sql, tuple(project_ids))
+        
+        # 删除项目数据
+        delete_projects_sql = f"DELETE FROM projects WHERE project_id IN ({placeholders})"
+        projects_result = execute_query(delete_projects_sql, tuple(project_ids))
+        
+        if projects_result is not None:
+            deleted_count = projects_result
+        
+        return {
+            "success": True,
+            "message": f"成功删除 {deleted_count} 个项目及相关数据",
+            "deleted_count": deleted_count,
+            "deleted_project_ids": project_ids,
+            "details": {
+                "project_tasks_deleted": project_tasks_result if 'project_tasks_result' in locals() else 0,
+                "subtasks_deleted": subtasks_result if 'subtasks_result' in locals() else 0
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"批量删除项目出错: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
+
+# 33. 删除单个项目
+@router.delete("/projects/{project_id}")
+async def delete_single_project(project_id: int):
+    """删除单个项目及其相关数据"""
+    try:
+        # 检查projects表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'projects'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            raise HTTPException(status_code=404, detail="projects表不存在")
+        
+        # 检查项目是否存在
+        check_sql = "SELECT project_id FROM projects WHERE project_id = %s"
+        project = execute_query(check_sql, (project_id,))
+        
+        if not project:
+            raise HTTPException(status_code=404, detail=f"项目ID {project_id} 不存在")
+        
+        # 开始事务删除
+        
+        # 删除相关的project_tasks数据
+        delete_project_tasks_sql = "DELETE FROM project_tasks WHERE project_id = %s"
+        execute_query(delete_project_tasks_sql, (project_id,))
+        
+        # 删除相关的子任务数据
+        delete_subtasks_sql = "DELETE FROM subtasks WHERE project_id = %s"
+        execute_query(delete_subtasks_sql, (project_id,))
+        
+        # 删除项目数据
+        delete_project_sql = "DELETE FROM projects WHERE project_id = %s"
+        result = execute_query(delete_project_sql, (project_id,))
+        
+        if result is None or result == 0:
+            raise HTTPException(status_code=400, detail="删除项目失败")
+        
+        return {
+            "success": True,
+            "message": f"项目 {project_id} 删除成功",
+            "deleted_project_id": project_id,
+            "details": {
+                "project_tasks_deleted": 1,  # 这里可以根据实际情况调整
+                "subtasks_deleted": 1
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"删除项目出错: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")

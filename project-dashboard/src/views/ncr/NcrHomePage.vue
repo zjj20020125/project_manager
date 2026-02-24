@@ -5,7 +5,7 @@
       <div style="position: fixed; top: 0; left: 0; right: 0; z-index: 1000; background: linear-gradient(135deg, #409EFF 0%, #4d9eff 100%); padding: 30px; box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);"> 
         <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: center; align-items: center; position: relative;">
           <div style="text-align: center;">
-            <h1 style="margin: 0; font-size: 32px; color: white; font-weight: bold; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);">NCR管理</h1>
+            <h1 style="margin: 0; font-size: 32px; color: white; font-weight: bold; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);">质量管理部 | NCR管理</h1>
             <p style="margin-top: 10px; color: rgba(255, 255, 255, 0.9); font-size: 16px;">NCR流程管理</p>
           </div>
           <div style="color: white; font-size: 18px; position: absolute; right: 0;">

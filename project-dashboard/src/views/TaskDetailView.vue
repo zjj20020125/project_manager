@@ -148,16 +148,18 @@ const getTaskStatusTagType = (status) => {
     case '进行中':
     case 'in_progress':
       return 'info'
-    case '已完成':
+    case '按时完成':
+    case 'completed_on_time':
+      return 'success'
+    case '延期完成':
+    case 'delayed_completion':
+      return 'warning'
     case '完成':
     case 'completed':
-      return 'success'
+      return 'primary'
     case '已验收':
     case 'accepted':
-      return 'primary'
-    case '延期完成':
-    case 'overdue_completed':
-      return 'danger'
+      return 'success'
     case '异常':
     case 'exception':
       return 'danger'

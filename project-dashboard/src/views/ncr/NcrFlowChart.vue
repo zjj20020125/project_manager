@@ -11,7 +11,7 @@
       <el-col :span="12">
         <el-card shadow="hover" class="clickable-card">
           <div slot="header" class="card-header">未评审阶段责任人员分布（前十五名）</div>
-          <div ref="unreviewedStagePieRef" class="chart-container"></div>
+          <div ref="unreviewedStageBarRef" class="chart-container"></div>
         </el-card>
       </el-col>
 
@@ -54,7 +54,7 @@
           <div slot="header" class="card-header">
             <span>未处理类型分布统计</span>
           </div>
-          <div ref="dqjdChartRef" class="chart-container"></div>
+          <div ref="dqjdBarRef" class="chart-container"></div>
         </el-card>
       </el-col>
       <el-col :span="12">
@@ -167,7 +167,7 @@ export default {
     const typePieRef = ref(null);
     const trendBarRef = ref(null);
     // 新增：DQJD图表和WCZZ列表引用
-    const dqjdChartRef = ref(null);
+    const dqjdBarRef = ref(null);
     const wczzListRef = ref(null);
     // 新增：责任分析图表引用
     const responsibilityChartRef = ref(null);
@@ -324,18 +324,18 @@ export default {
       trendBarChart.setOption(option);
     };
 
-    // 新增：初始化DQJD分布饼图
+    // 新增：初始化DQJD分布柱状图
     const initDqjdChart = (data) => {
-      if (!dqjdChartRef.value) return;
+      if (!dqjdBarRef.value) return;
 
-      if (dqjdChart) {
-        dqjdChart.dispose();
+      if (dqjdBarChart) {
+        dqjdBarChart.dispose();
       }
 
-      dqjdChart = echarts.init(dqjdChartRef.value);
+      dqjdBarChart = echarts.init(dqjdBarRef.value);
 
       // 定义一组对比明显的颜色，确保相邻数据颜色不会太相近
-      const pieColors = [
+      const barColors = [
         '#FF6B6B', // 红色
         '#4ECDC4', // 青绿色
         '#45B7D1', // 蓝色
@@ -348,49 +348,47 @@ export default {
         '#85C1E9'  // 浅蓝色
       ];
 
+      // 为数据项添加颜色
+      const coloredData = data.map((item, index) => ({
+        ...item,
+        itemStyle: {
+          color: barColors[index % barColors.length]
+        }
+      }));
+
       const option = {
         tooltip: {
-          trigger: 'item',
-          formatter: '{a} <br/>{b}: {c} ({d}%)'
+          trigger: 'axis',
+          axisPointer: { type: 'shadow' },
+          formatter: '{b}: {c}'
         },
-        legend: {
-          orient: 'horizontal',
-          left: 'center',
-          bottom: 0,
-          itemGap: 5
+        grid: { left: '15%', right: '4%', bottom: '25%', top: '10%', containLabel: true },
+        xAxis: {
+          type: 'category',
+          data: coloredData.map(item => item.name),
+          axisLabel: {
+            rotate: 45,
+            interval: 0
+          }
+        },
+        yAxis: {
+          type: 'value',
+          name: '数量'
         },
         series: [{
           name: 'DQJD阶段分布',
-          type: 'pie',
-          radius: ['40%', '60%'],
-          center: ['50%', '40%'],
-          avoidLabelOverlap: false,
-          itemStyle: {
-            borderRadius: 10,
-            borderColor: '#fff',
-            borderWidth: 2,
-            color: function(params) {
-              // 循环使用预定义颜色
-              return pieColors[params.dataIndex % pieColors.length];
-            }
-          },
+          type: 'bar',
+          data: coloredData,
+          barWidth: '60%',
           label: {
             show: true,
-            formatter: '{b}: {c}',
-            minMargin: 5
-          },
-          emphasis: {
-            label: {
-              show: true,
-              fontSize: '16',
-              fontWeight: 'bold'
-            }
-          },
-          data: data
+            position: 'top',
+            formatter: '{c}'
+          }
         }]
       };
 
-      dqjdChart.setOption(option);
+      dqjdBarChart.setOption(option);
     };
 
     // 新增：处理WCZZ数据并填充列表
