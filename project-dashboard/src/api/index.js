@@ -1,5 +1,6 @@
 // api/index.js - API服务接口
 import axios from 'axios';
+import { isExtensionInterferenceError, handleExtensionInterference } from '@/utils/extensionHandler';
 
 // 创建axios实例，配置基础URL和默认参数
 const apiClient = axios.create({
@@ -50,23 +51,31 @@ apiClient.interceptors.response.use(
     console.log('API响应成功:', response.config.url, response.status); // 添加响应日志
     return response.data;
   },
-  error => {
-    // 特别处理异步响应错误
-    if (error.message && error.message.includes('A listener indicated an asynchronous response')) {
-      console.warn('检测到浏览器扩展干扰的异步响应错误，正在重试...');
-      // 这种错误通常是临时的，可以尝试重新发送请求
+  async error => {
+    // 使用专门的扩展干扰处理工具
+    if (isExtensionInterferenceError(error)) {
       const config = error.config;
-      if (config && !config.__retryCount) {
-        config.__retryCount = 0;
+      if (config) {
+        try {
+          return await handleExtensionInterference(error, config, () => apiClient(config));
+        } catch (handledError) {
+          // 如果处理工具返回了自定义错误对象
+          return Promise.reject(handledError);
+        }
       }
-      
-      if (config.__retryCount < 2) { // 最多重试2次
+    }
+    
+    // 处理网络中断错误
+    if (error.code === 'NETWORK_ERROR' || error.message === 'Network Error') {
+      console.warn('网络连接中断，尝试重新连接...');
+      const config = error.config;
+      if (config && (!config.__retryCount || config.__retryCount < 2)) {
+        if (!config.__retryCount) config.__retryCount = 0;
         config.__retryCount += 1;
-        console.log(`第 ${config.__retryCount} 次重试请求:`, config.url);
-        return new Promise(resolve => {
+        return new Promise((resolve, reject) => {
           setTimeout(() => {
-            resolve(apiClient(config));
-          }, 1000); // 延迟1秒后重试
+            apiClient(config).then(resolve).catch(reject);
+          }, 2000);
         });
       }
     }
@@ -248,6 +257,12 @@ export const projectApi = {
   
   // 获取未评审阶段责任人员分布统计（前15名）
   getUnreviewedStageResponsibility: () => apiClient.get('/v1/ncr/unreviewed-stage-responsibility'),
+  
+  // 获取SSCX字段统计（近一年数据）
+  getSscxStatistics: () => apiClient.get('/v1/ncr/sscx-statistics'),
+  
+  // 获取SSCX时间趋势统计（按月份展示近一年数据）
+  getSscxTrendStatistics: () => apiClient.get('/v1/ncr/sscx-trend'),
   
   // 导入项目数据
   importProjects: (formData, overwrite = false) => {

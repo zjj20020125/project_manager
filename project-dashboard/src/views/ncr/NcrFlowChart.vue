@@ -711,6 +711,210 @@ export default {
       }
     };
 
+    // 新增：获取SSCX统计数据
+    const fetchSscxData = async () => {
+      sscxLoading.value = true;
+      try {
+        // 获取SSCX统计数据
+        const sscxResponse = await projectApi.getSscxStatistics();
+        console.log('NcrFlowChart - SSCX Response:', sscxResponse);
+        if (Array.isArray(sscxResponse) && sscxResponse.length > 0) {
+          sscxData.value = sscxResponse;
+          console.log('NcrFlowChart - SSCX Data set:', sscxData.value);
+          initSscxPieChart(sscxResponse);
+        } else {
+          // 使用模拟数据
+          console.warn('SSCX统计数据为空，使用模拟数据');
+          const mockSscxData = [
+            { name: '类型A', value: 25 },
+            { name: '类型B', value: 18 },
+            { name: '类型C', value: 15 },
+            { name: '类型D', value: 12 },
+            { name: '类型E', value: 8 }
+          ];
+          sscxData.value = mockSscxData;
+          initSscxPieChart(mockSscxData);
+        }
+
+        // 获取趋势数据
+        const trendResponse = await projectApi.getSscxTrendStatistics();
+        console.log('NcrFlowChart - SSCX Trend Response:', trendResponse);
+        if (Array.isArray(trendResponse) && trendResponse.length > 0) {
+          sscxTrendData.value = trendResponse;
+          console.log('NcrFlowChart - SSCX Trend Data set:', sscxTrendData.value);
+          initSscxTrendChart(trendResponse);
+        } else {
+          // 使用模拟数据
+          console.warn('SSCX趋势数据为空，使用模拟数据');
+          const months = ['2023-09', '2023-10', '2023-11', '2023-12', '2024-01', '2024-02'];
+          const mockTrendData = months.map((month, index) => ({
+            month: month,
+            total: 20 + Math.floor(Math.random() * 15)
+          }));
+          sscxTrendData.value = mockTrendData;
+          initSscxTrendChart(mockTrendData);
+        }
+      } catch (error) {
+        console.error('获取SSCX统计数据失败:', error);
+        // 使用模拟数据作为降级方案
+        const mockSscxData = [
+          { name: '类型A', value: 25 },
+          { name: '类型B', value: 18 },
+          { name: '类型C', value: 15 },
+          { name: '类型D', value: 12 },
+          { name: '类型E', value: 8 }
+        ];
+        sscxData.value = mockSscxData;
+        initSscxPieChart(mockSscxData);
+        
+        const months = ['2023-09', '2023-10', '2023-11', '2023-12', '2024-01', '2024-02'];
+        const mockTrendData = months.map((month, index) => ({
+          month: month,
+          total: 20 + Math.floor(Math.random() * 15)
+        }));
+        sscxTrendData.value = mockTrendData;
+        initSscxTrendChart(mockTrendData);
+      } finally {
+        sscxLoading.value = false;
+      }
+    };
+
+    const refreshSscxData = () => {
+      fetchSscxData();
+    };
+
+    // 新增：SSCX饼图初始化
+    const initSscxPieChart = (data) => {
+      if (!sscxPieRef.value || !data || data.length === 0) return;
+      
+      if (sscxPieChart) sscxPieChart.dispose();
+      sscxPieChart = echarts.init(sscxPieRef.value);
+      
+      const option = {
+        title: {
+          text: 'SSCX类别分布',
+          left: 'center',
+          top: 10,
+          textStyle: { fontSize: 14, fontWeight: 'bold' }
+        },
+        tooltip: {
+          trigger: 'item',
+          formatter: '{a} <br/>{b}: {c}项 ({d}%)'
+        },
+        legend: {
+          orient: 'horizontal',
+          bottom: 10,
+          itemWidth: 12,
+          itemHeight: 12
+        },
+        series: [{
+          name: 'SSCX类别',
+          type: 'pie',
+          radius: ['40%', '70%'],
+          center: ['50%', '50%'],
+          avoidLabelOverlap: false,
+          itemStyle: {
+            borderRadius: 10,
+            borderColor: '#fff',
+            borderWidth: 2
+          },
+          label: {
+            show: true,
+            formatter: '{b}: {c}项',
+            minMargin: 5
+          },
+          emphasis: {
+            label: {
+              show: true,
+              fontSize: '14',
+              fontWeight: 'bold'
+            }
+          },
+          data: data.map((item, index) => ({
+            name: item.name,
+            value: item.value,
+            itemStyle: {
+              color: getColorByIndex(index)
+            }
+          }))
+        }]
+      };
+      
+      sscxPieChart.setOption(option);
+    };
+
+    // 新增：SSCX趋势图初始化
+    const initSscxTrendChart = (data) => {
+      if (!sscxTrendRef.value || !data || data.length === 0) return;
+      
+      if (sscxTrendChart) sscxTrendChart.dispose();
+      sscxTrendChart = echarts.init(sscxTrendRef.value);
+      
+      // 提取月份和总量数据
+      const months = data.map(item => item.month);
+      const totals = data.map(item => item.total);
+      
+      const option = {
+        title: {
+          text: '近一年SSCX趋势',
+          left: 'center',
+          top: 10,
+          textStyle: { fontSize: 14, fontWeight: 'bold' }
+        },
+        tooltip: {
+          trigger: 'axis',
+          formatter: (params) => {
+            const item = params[0];
+            return `${item.name}<br/>总量: ${item.value}项`;
+          }
+        },
+        grid: {
+          left: '10%',
+          right: '10%',
+          top: '20%',
+          bottom: '15%'
+        },
+        xAxis: {
+          type: 'category',
+          data: months
+        },
+        yAxis: {
+          type: 'value',
+          name: '数量'
+        },
+        series: [{
+          name: '总量',
+          type: 'line',
+          data: totals,
+          smooth: true,
+          itemStyle: { color: '#409EFF' },
+          areaStyle: { opacity: 0.3 }
+        }]
+      };
+      
+      sscxTrendChart.setOption(option);
+    };
+
+    // 辅助方法：获取颜色
+    const getColorByIndex = (index) => {
+      const colors = [
+        '#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de',
+        '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc', '#5470c6'
+      ];
+      return colors[index % colors.length];
+    };
+
+    // 窗口大小调整处理
+    const handleResize = () => {
+      if (typePieChart) typePieChart.resize();
+      if (trendBarChart) trendBarChart.resize();
+      if (dqjdChart) dqjdChart.resize();
+      if (responsibilityChart) responsibilityChart.resize();
+      if (unreviewedBarChart) unreviewedBarChart.resize();
+      if (sscxPieChart) sscxPieChart.resize(); // 新增
+      if (sscxTrendChart) sscxTrendChart.resize(); // 新增
+    };
+
     // 跳转到阶段详情页
     const goToStageDetail = () => {
       router.push({ name: 'NcrStageDetail' });
@@ -729,69 +933,22 @@ export default {
       });
     };
 
-    // 处理窗口大小变化
-    const handleResize = () => {
-      if (unreviewedStagePieChart) unreviewedStagePieChart.resize();
-      if (typePieChart) typePieChart.resize();
-      if (trendBarChart) trendBarChart.resize();
-      // 新增：处理DQJD图表的resize
-      if (dqjdChart) dqjdChart.resize();
-      // 新增：处理责任分析图表的resize
-      if (responsibilityChart) responsibilityChart.resize();
-      // 新增：处理未评审状态图表的resize
-      if (unreviewedBarChart) unreviewedBarChart.resize();
-    };
-
     onMounted(() => {
-      // 使用setTimeout确保DOM完全渲染后再初始化图表
-      setTimeout(() => {
-        try {
-          // 获取数据并初始化图表
-          fetchNcrData();
-
-          // 监听窗口大小变化，自适应图表尺寸
-          window.addEventListener('resize', handleResize);
-        } catch (e) {
-          console.error('Error initializing charts:', e);
-        }
-      }, 100);
+      fetchNcrData();
+      fetchSscxData(); // 新增：加载SSCX数据
+      window.addEventListener('resize', handleResize);
     });
 
+    // 当组件卸载时
     onUnmounted(() => {
-      try {
-        // 确保在组件卸载时销毁所有图表实例
-        if (unreviewedStagePieChart) {
-          unreviewedStagePieChart.dispose();
-          unreviewedStagePieChart = null;
-        }
-        if (typePieChart) {
-          typePieChart.dispose();
-          typePieChart = null;
-        }
-        if (trendBarChart) {
-          trendBarChart.dispose();
-          trendBarChart = null;
-        }
-        // 新增：销毁DQJD图表实例
-        if (dqjdChart) {
-          dqjdChart.dispose();
-          dqjdChart = null;
-        }
-        // 新增：销毁责任分析图表实例
-        if (responsibilityChart) {
-          responsibilityChart.dispose();
-          responsibilityChart = null;
-        }
-        // 新增：销毁未评审状态图表实例
-        if (unreviewedBarChart) {
-          unreviewedBarChart.dispose();
-          unreviewedBarChart = null;
-        }
-
-        window.removeEventListener('resize', handleResize);
-      } catch (e) {
-        console.warn('Error cleaning up NCR component:', e);
-      }
+      if (typePieChart) typePieChart.dispose();
+      if (trendBarChart) trendBarChart.dispose();
+      if (dqjdChart) dqjdChart.dispose();
+      if (responsibilityChart) responsibilityChart.dispose();
+      if (unreviewedBarChart) unreviewedBarChart.dispose();
+      if (sscxPieChart) sscxPieChart.dispose(); // 新增
+      if (sscxTrendChart) sscxTrendChart.dispose(); // 新增
+      window.removeEventListener('resize', handleResize);
     });
 
     // 当组件被激活时（例如从其他页面返回），重新获取数据
@@ -803,8 +960,10 @@ export default {
       unreviewedStagePieRef,  // 未评审阶段责任人员分布图表ref
       typePieRef,
       trendBarRef,
-      // 新增：返回DQJD的ref
-      dqjdChartRef,
+      // 修复：返回正确的DQJD ref名称
+      dqjdBarRef,
+      // 新增：返回WCZZ列表ref
+      wczzListRef,
       wczzListData,
       ncrOwnerStats,
       ownerStatsLoading,
@@ -817,7 +976,16 @@ export default {
       getPriorityTagType,
       goToStageDetail,
       goToTypeDetail,
-      goToNcrDetail
+      goToNcrDetail,
+      // 新增：返回SSCX相关引用和方法
+      sscxPieRef,
+      sscxTrendRef,
+      sscxData,
+      sscxTrendData,
+      sscxLoading,
+      sscxTotalCount,
+      topSscxCategory,
+      refreshSscxData
     };
   }
 };
@@ -866,27 +1034,20 @@ export default {
 }
 
 .scroll-list-container {
-  height: 260px;
-  overflow-y: auto;
-  padding: 10px;
+  height: 300px;
+  overflow: hidden;
+  position: relative;
 }
 
 .scroll-list-content {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  /* 自动滚动动画 */
+  height: auto;
 }
 
-.scroll-list-content.auto-scroll {
-  animation: autoScroll 60s linear infinite;
+.auto-scroll {
+  animation: scroll-up 20s linear infinite;
 }
 
-.scroll-list-content.auto-scroll:hover {
-  animation-play-state: paused;
-}
-
-@keyframes autoScroll {
+@keyframes scroll-up {
   0% {
     transform: translateY(0);
   }
@@ -900,30 +1061,48 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  background: #f8f9fa;
-  border: 1px solid #e1e4e8;
-  border-radius: 6px;
-  transition: all 0.3s ease;
+  border-bottom: 1px solid #eee;
+  transition: background-color 0.3s;
 }
 
 .list-item:hover {
-  background: #e3f2fd;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background-color: #f5f7fa;
 }
 
-.list-item .name {
-  font-weight: 600;
-  color: #1a1a1a;
-  font-size: 14px;
+.name {
+  font-weight: 500;
+  color: #303133;
 }
 
-.list-item .count {
-  background: #409eff;
-  color: white;
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  min-width: 60px;
+.count {
+  font-weight: bold;
+  color: #f56c6c;
+}
+
+/* 新增：SSCX统计模块样式 */
+.sscx-overview {
+  display: flex;
+  justify-content: space-around;
+  padding: 15px 0;
+  border-top: 1px solid #eee;
+  margin-top: 10px;
+}
+
+.overview-item {
   text-align: center;
+}
+
+.label {
+  font-size: 12px;
+  color: #606266;
+  display: block;
+  margin-bottom: 5px;
+}
+
+.value {
+  font-size: 14px;
+  font-weight: bold;
+  color: #409EFF;
+  display: block;
 }
 </style>

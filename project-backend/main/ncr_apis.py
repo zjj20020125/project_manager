@@ -779,3 +779,171 @@ def get_unreviewed_responsibility_stats():
         import traceback
         traceback.print_exc()
         return []
+
+# 29. 获取SSCX字段统计（近一年数据）
+@router.get("/ncr/sscx-statistics", response_model=List[dict])
+def get_sscx_statistics():
+    """
+    获取jgjncr_copy表中sscx字段的种类和数量统计
+    根据cjrq字段筛选近一年的数据
+    """
+    try:
+        # 检查jgjncr_copy表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'jgjncr_copy'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            print("警告: jgjncr_copy表不存在")
+            return []
+        
+        # 检查必要字段是否存在
+        describe_sql = "DESCRIBE jgjncr_copy"
+        columns_result = execute_query(describe_sql, fetch_all=True)
+        if not columns_result:
+            print("警告: 无法获取jgjncr_copy表结构")
+            return []
+        
+        column_names = [col['Field'] for col in columns_result if 'Field' in col]
+        
+        # 检查sscx和cjrq字段是否存在
+        if 'sscx' not in column_names:
+            print("警告: jgjncr_copy表缺少sscx字段")
+            return []
+        
+        if 'cjrq' not in column_names:
+            print("警告: jgjncr_copy表缺少cjrq字段")
+            return []
+        
+        # 计算一年前的日期
+        from datetime import datetime, timedelta
+        one_year_ago = datetime.now() - timedelta(days=365)
+        one_year_ago_str = one_year_ago.strftime('%Y-%m-%d')
+        
+        # 查询近一年内sscx字段的统计
+        sscx_sql = """
+        SELECT 
+            COALESCE(sscx, '未知') as sscx_type,
+            COUNT(*) as count
+        FROM jgjncr_copy
+        WHERE cjrq >= %s AND sscx IS NOT NULL AND TRIM(sscx) != ''
+        GROUP BY sscx
+        ORDER BY count DESC
+        """
+        
+        sscx_results = execute_query(sscx_sql, (one_year_ago_str,), fetch_all=True) or []
+        
+        # 格式化返回数据
+        formatted_results = []
+        for result in sscx_results:
+            if result is not None and 'sscx_type' in result and 'count' in result:
+                formatted_results.append({
+                    "name": result['sscx_type'],
+                    "value": result['count']
+                })
+        
+        # 如果没有数据，返回空数组而不是默认值
+        if not formatted_results:
+            print("警告: 近一年内没有找到有效的sscx数据")
+            return []
+        
+        return formatted_results
+    except Exception as e:
+        print(f"获取SSCX统计出错: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+# 30. 获取SSCX时间趋势统计（按月份展示近一年数据）
+@router.get("/ncr/sscx-trend", response_model=List[dict])
+def get_sscx_trend_statistics():
+    """
+    获取jgjncr_copy表中sscx字段的时间趋势统计
+    按月份统计近一年内各类sscx的数量变化
+    """
+    try:
+        # 检查jgjncr_copy表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'jgjncr_copy'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            print("警告: jgjncr_copy表不存在")
+            return []
+        
+        # 检查必要字段是否存在
+        describe_sql = "DESCRIBE jgjncr_copy"
+        columns_result = execute_query(describe_sql, fetch_all=True)
+        if not columns_result:
+            print("警告: 无法获取jgjncr_copy表结构")
+            return []
+        
+        column_names = [col['Field'] for col in columns_result if 'Field' in col]
+        
+        # 检查sscx和cjrq字段是否存在
+        if 'sscx' not in column_names:
+            print("警告: jgjncr_copy表缺少sscx字段")
+            return []
+        
+        if 'cjrq' not in column_names:
+            print("警告: jgjncr_copy表缺少cjrq字段")
+            return []
+        
+        # 计算一年前的日期
+        from datetime import datetime, timedelta
+        one_year_ago = datetime.now() - timedelta(days=365)
+        one_year_ago_str = one_year_ago.strftime('%Y-%m-%d')
+        
+        # 查询近一年内sscx字段按月份的统计
+        trend_sql = """
+        SELECT 
+            DATE_FORMAT(cjrq, '%Y-%m') as month,
+            COALESCE(sscx, '未知') as sscx_type,
+            COUNT(*) as count
+        FROM jgjncr_copy
+        WHERE cjrq >= %s AND sscx IS NOT NULL AND TRIM(sscx) != ''
+        GROUP BY DATE_FORMAT(cjrq, '%Y-%m'), sscx
+        ORDER BY month, count DESC
+        """
+        
+        trend_results = execute_query(trend_sql, (one_year_ago_str,), fetch_all=True) or []
+        
+        # 按月份组织数据
+        monthly_data = {}
+        sscx_types = set()
+        
+        for result in trend_results:
+            if result and 'month' in result and 'sscx_type' in result and 'count' in result:
+                month = result['month']
+                sscx_type = result['sscx_type']
+                count = result['count']
+                
+                sscx_types.add(sscx_type)
+                
+                if month not in monthly_data:
+                    monthly_data[month] = {}
+                monthly_data[month][sscx_type] = count
+        
+        # 格式化返回数据
+        formatted_results = []
+        sorted_months = sorted(monthly_data.keys())
+        
+        for month in sorted_months:
+            month_data = {
+                "month": month,
+                "total": sum(monthly_data[month].values())
+            }
+            
+            # 为每种sscx类型添加数据
+            for sscx_type in sscx_types:
+                month_data[sscx_type] = monthly_data[month].get(sscx_type, 0)
+            
+            formatted_results.append(month_data)
+        
+        # 如果没有数据，返回空数组
+        if not formatted_results:
+            print("警告: 近一年内没有找到有效的sscx趋势数据")
+            return []
+        
+        return formatted_results
+    except Exception as e:
+        print(f"获取SSCX趋势统计出错: {e}")
+        import traceback
+        traceback.print_exc()
+        return []

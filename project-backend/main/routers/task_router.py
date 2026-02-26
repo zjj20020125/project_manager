@@ -104,6 +104,204 @@ async def get_task_list(limit: int = 20, offset: int = 0):
         print(f"Error getting task list: {e}")
         return []
 
+# 7. Get project tasks by status (for project status distribution chart click)
+@router.get("/project-tasks/status/{status}")
+async def get_project_tasks_by_status(status: str):
+    """Get project tasks by status from project_tasks table"""
+    try:
+        # Check if project_tasks table exists
+        check_table_sql = "SHOW TABLES LIKE 'project_tasks'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            print("Warning: project_tasks table does not exist")
+            return []
+
+        # Check if required fields exist
+        describe_sql = "DESCRIBE project_tasks"
+        columns_result = execute_query(describe_sql, fetch_all=True)
+        if not columns_result:
+            print("Warning: Cannot get project_tasks table structure")
+            return []
+
+        column_names = [col['Field'] for col in columns_result if 'Field' in col]
+        required_columns = ['project_name', 'wbs_code', 'task_name', 'task_owner', 'task_status', 'planned_start_date', 'planned_end_date', 'actual_start_date', 'actual_end_date', 'progress', 'created_at']
+        missing_columns = [col for col in required_columns if col not in column_names]
+
+        if missing_columns:
+            print(f"Warning: project_tasks table missing columns: {missing_columns}")
+            return []
+
+        # Map frontend display status to database status
+        status_mapping = {
+            '未开始': ['未开始'],
+            '进行中': ['进行中'],
+            '已完成': ['完成', '已完成', '已验收', 'Completed'],
+            '已验收': ['已验收', 'Accepted'],
+            '异常': ['异常'],
+            '按时完成': ['按时完成'],
+            '延期完成': ['延期完成']
+        }
+        
+        # Get database statuses for the given display status
+        db_statuses = status_mapping.get(status, [status])
+        placeholders = ','.join(['%s'] * len(db_statuses))
+        
+        # Query project tasks by status
+        task_sql = f"""
+        SELECT 
+            task_id,
+            project_name,
+            wbs_code,
+            task_name,
+            task_owner,
+            task_status,
+            planned_start_date,
+            planned_end_date,
+            actual_start_date,
+            actual_end_date,
+            progress,
+            created_at
+        FROM project_tasks
+        WHERE task_status IN ({placeholders})
+        ORDER BY created_at DESC
+        """
+        
+        tasks = execute_query(task_sql, tuple(db_statuses), fetch_all=True) or []
+        print(f"Query status: {status}, DB statuses: {db_statuses}, Matched tasks count: {len(tasks)}")
+        
+        # Format data
+        formatted_tasks = []
+        for task in tasks:
+            if not task:
+                continue
+                
+            # Handle Decimal type conversion
+            progress_value = task.get("progress")
+            if hasattr(progress_value, 'quantize'):
+                progress_str = str(float(progress_value))
+            else:
+                progress_str = str(progress_value) if progress_value is not None else "0"
+
+            formatted_task = {
+                "task_id": task.get("task_id"),
+                "project_name": task.get("project_name", ""),
+                "wbs_code": task.get("wbs_code", ""),
+                "task_name": task.get("task_name", ""),
+                "task_owner": task.get("task_owner", ""),
+                "task_status": task.get("task_status", ""),
+                "planned_start_date": str(task.get("planned_start_date")) if task.get("planned_start_date") else None,
+                "planned_end_date": str(task.get("planned_end_date")) if task.get("planned_end_date") else None,
+                "actual_start_date": str(task.get("actual_start_date")) if task.get("actual_start_date") else None,
+                "actual_end_date": str(task.get("actual_end_date")) if task.get("actual_end_date") else None,
+                "progress": progress_str.rstrip('0').rstrip('.') if '.' in progress_str else progress_str,
+                "created_at": str(task.get("created_at")) if task.get("created_at") else None
+            }
+            formatted_tasks.append(formatted_task)
+
+        return formatted_tasks
+    except Exception as e:
+        print(f"Error getting project tasks by status: {e}")
+        return []
+
+# 7.5 Get tasks by project status (for tasks-by-project-status endpoint)
+@router.get("/tasks-by-project-status/{status}")
+async def get_tasks_by_project_status(status: str):
+    """Get tasks by project status from project_tasks table"""
+    try:
+        # Check if project_tasks table exists
+        check_table_sql = "SHOW TABLES LIKE 'project_tasks'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            print("Warning: project_tasks table does not exist")
+            return []
+
+        # Check if required fields exist
+        describe_sql = "DESCRIBE project_tasks"
+        columns_result = execute_query(describe_sql, fetch_all=True)
+        if not columns_result:
+            print("Warning: Cannot get project_tasks table structure")
+            return []
+
+        column_names = [col['Field'] for col in columns_result if 'Field' in col]
+        required_columns = ['project_name', 'wbs_code', 'task_name', 'task_owner', 'task_status', 'planned_start_date', 'planned_end_date', 'actual_start_date', 'actual_end_date', 'progress', 'created_at']
+        missing_columns = [col for col in required_columns if col not in column_names]
+
+        if missing_columns:
+            print(f"Warning: project_tasks table missing columns: {missing_columns}")
+            return []
+
+        # Map frontend display status to database status
+        status_mapping = {
+            '未开始': ['未开始'],
+            '进行中': ['进行中'],
+            '已完成': ['完成', '已完成', '已验收', 'Completed'],
+            '已验收': ['已验收', 'Accepted'],
+            '异常': ['异常'],
+            '按时完成': ['按时完成'],
+            '延期完成': ['延期完成']
+        }
+        
+        # Get database statuses for the given display status
+        db_statuses = status_mapping.get(status, [status])
+        placeholders = ','.join(['%s'] * len(db_statuses))
+        
+        # Query project tasks by status
+        task_sql = f"""
+        SELECT 
+            task_id,
+            project_name,
+            wbs_code,
+            task_name,
+            task_owner,
+            task_status,
+            planned_start_date,
+            planned_end_date,
+            actual_start_date,
+            actual_end_date,
+            progress,
+            created_at
+        FROM project_tasks
+        WHERE task_status IN ({placeholders})
+        ORDER BY created_at DESC
+        """
+        
+        tasks = execute_query(task_sql, tuple(db_statuses), fetch_all=True) or []
+        print(f"Query status: {status}, DB statuses: {db_statuses}, Matched tasks count: {len(tasks)}")
+        
+        # Format data
+        formatted_tasks = []
+        for task in tasks:
+            if not task:
+                continue
+                
+            # Handle Decimal type conversion
+            progress_value = task.get("progress")
+            if hasattr(progress_value, 'quantize'):
+                progress_str = str(float(progress_value))
+            else:
+                progress_str = str(progress_value) if progress_value is not None else "0"
+
+            formatted_task = {
+                "task_id": task.get("task_id"),
+                "project_name": task.get("project_name", ""),
+                "wbs_code": task.get("wbs_code", ""),
+                "task_name": task.get("task_name", ""),
+                "task_owner": task.get("task_owner", ""),
+                "task_status": task.get("task_status", ""),
+                "planned_start_date": str(task.get("planned_start_date")) if task.get("planned_start_date") else None,
+                "planned_end_date": str(task.get("planned_end_date")) if task.get("planned_end_date") else None,
+                "actual_start_date": str(task.get("actual_start_date")) if task.get("actual_start_date") else None,
+                "actual_end_date": str(task.get("actual_end_date")) if task.get("actual_end_date") else None,
+                "progress": progress_str.rstrip('0').rstrip('.') if '.' in progress_str else progress_str,
+                "created_at": str(task.get("created_at")) if task.get("created_at") else None
+            }
+            formatted_tasks.append(formatted_task)
+
+        return formatted_tasks
+    except Exception as e:
+        print(f"Error getting tasks by project status: {e}")
+        return []
+
 # 8. Get tasks by type
 @router.get("/tasks/type/{type}")
 async def get_tasks_by_type(type: str, limit: int = 10, offset: int = 0):

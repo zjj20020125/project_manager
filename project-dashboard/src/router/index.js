@@ -17,6 +17,10 @@ import NcrFlowChart from '../views/ncr/NcrFlowChart.vue'
 import NcrStageDetail from '../views/ncr/NcrStageDetail.vue'
 import NcrItemDetail from '../views/ncr/NcrItemDetail.vue'
 import NcrHomePage from '../views/ncr/NcrHomePage.vue'
+import NcrDashboard from '../views/ncr/NcrDashboard.vue'
+import NcrEnhancedDashboard from '../views/ncr/NcrEnhancedDashboard.vue'
+import SscxStatistics from '../views/ncr/SscxStatistics.vue'
+import ExtensionTest from '../views/ExtensionTest.vue'
 import AbnormalOwnerDetailView from '../views/AbnormalOwnerDetailView.vue'
 import AbnormalTaskDetail from '../views/AbnormalTaskDetail.vue'
 
@@ -24,12 +28,14 @@ const routes = [
   {
     path: '/',
     name: 'Home',
-    component: Home
+    component: Home,
+    meta: { title: '系统首页' }
   },
   {
-    path: '/home',
+    path: '/homepage',
     name: 'HomePage',
-    component: HomePage
+    component: HomePage,
+    meta: { title: '项目管理' }
   },
   {
     path: '/project-detail',
@@ -120,6 +126,27 @@ const routes = [
     component: NcrHomePage
   },
   {
+    path: '/ncr-dashboard',
+    name: 'NcrDashboard',
+    component: NcrDashboard
+  },
+  {
+    path: '/ncr-enhanced',
+    name: 'NcrEnhancedDashboard',
+    component: NcrEnhancedDashboard,
+    meta: { title: 'NCR管理' }
+  },
+  {
+    path: '/extension-test',
+    name: 'ExtensionTest',
+    component: ExtensionTest
+  },
+  {
+    path: '/sscx-statistics',
+    name: 'SscxStatistics',
+    component: SscxStatistics
+  },
+  {
     path: '/abnormal-owner-detail/:owner',
     name: 'AbnormalOwnerDetail',
     component: AbnormalOwnerDetailView,
@@ -136,6 +163,17 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes
+})
+
+// 路由守卫 - 设置页面标题
+router.beforeEach((to, from, next) => {
+  // 设置页面标题
+  if (to.meta && to.meta.title) {
+    document.title = `${to.meta.title} - 结构件事业部管理系统`
+  } else {
+    document.title = '结构件事业部管理系统'
+  }
+  next()
 })
 
 export default router

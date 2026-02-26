@@ -55,13 +55,13 @@ app.add_middleware(
 
 # 注册各个功能模块的路由
 app.include_router(project_router)
-app.include_router(ncr_router)
 app.include_router(gantt_router)
 app.include_router(task_router)
 app.include_router(project_detail_router)
 app.include_router(data_router)
-# 注意：chart_router放在最后，避免路由冲突
+# 注意：chart_router和ncr_router放在最后，避免路由冲突
 app.include_router(chart_router)
+app.include_router(ncr_router)
 
 # 健康检查端点
 @app.get("/")

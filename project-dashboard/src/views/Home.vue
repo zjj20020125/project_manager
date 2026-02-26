@@ -33,17 +33,34 @@
 
 <script setup>
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 
 // 跳转到项目管理页面
-const goToProjectManagement = () => {
-  router.push('/home')  // 假设项目管理页面是原来的HomePage，路径为/home
+const goToProjectManagement = async () => {
+  try {
+    // 添加跳转提示
+    ElMessage.info('正在跳转到项目管理界面...')
+    // 使用路由跳转到项目管理主页
+    await router.push('/homepage')
+  } catch (error) {
+    console.error('跳转到项目管理页面失败:', error)
+    ElMessage.error('跳转失败，请稍后重试')
+  }
 }
 
 // 跳转到NCR管理页面
-const goToNcrManagement = () => {
-  router.push('/ncr-home')  // NCR管理页面路径
+const goToNcrManagement = async () => {
+  try {
+    // 添加跳转提示
+    ElMessage.info('正在跳转到NCR管理界面...')
+    // 使用路由跳转到增强版NCR仪表盘
+    await router.push('/ncr-enhanced')
+  } catch (error) {
+    console.error('跳转到NCR管理页面失败:', error)
+    ElMessage.error('跳转失败，请稍后重试')
+  }
 }
 </script>
 
@@ -51,9 +68,33 @@ const goToNcrManagement = () => {
 .nav-button:hover {
   transform: translateY(-10px);
   box-shadow: 0 15px 30px rgba(0,0,0,0.2);
+  transition: all 0.3s ease;
+}
+
+.nav-button:active {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.15);
 }
 
 .button-card:hover {
   transform: scale(1.05);
+  transition: transform 0.3s ease;
+}
+
+/* 添加按钮点击效果 */
+.nav-button {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 添加渐变动画效果 */
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.nav-button:hover {
+  animation: gradientShift 3s ease infinite;
+  background-size: 200% 200%;
 }
 </style>

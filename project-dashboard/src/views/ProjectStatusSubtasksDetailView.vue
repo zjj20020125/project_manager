@@ -3,14 +3,21 @@
     <div class="header-section">
       <h2>{{ status }} 项目子任务详情</h2>
       <div class="header-actions">
-        <el-button 
-          type="primary" 
-          @click="exportCurrentData"
-          :loading="exportLoading"
-          style="margin-right: 10px;"
-        >
-          导出数据
-        </el-button>
+        <el-dropdown trigger="click" style="margin-right: 10px;">
+          <el-button type="primary" :loading="exportLoading">
+            导出数据<i class="el-icon-arrow-down el-icon--right"></i>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item @click="exportCurrentData">
+                导出当前页面
+              </el-dropdown-item>
+              <el-dropdown-item @click="exportAllData">
+                导出全部数据
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <button @click="goBack" class="btn btn-primary">返回</button>
       </div>
     </div>
@@ -138,13 +145,24 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { ElCard, ElTable, ElTableColumn, ElTag, ElProgress, ElPagination, ElSelect, ElOption, ElInput, ElMessage, ElMessageBox } from 'element-plus'
+import { ref, onMounted, watch } from 'vue'
+import { ElCard, ElTable, ElTableColumn, ElTag, ElProgress, ElPagination, ElSelect, ElOption, ElInput, ElMessage, ElMessageBox, ElDropdown, ElDropdownMenu, ElDropdownItem } from 'element-plus'
 import { useRouter, useRoute } from 'vue-router'
 import { projectApi } from '../api/index.js'
+import * as XLSX from 'xlsx'
 
 const router = useRouter()
 const route = useRoute()
+
+// Element Plus 服务组件安全调用包装函数
+const safeElMessage = (message, options = {}) => {
+  try {
+    return ElMessage(message, options);
+  } catch (error) {
+    console.warn('ElMessage 调用失败:', error);
+    return null;
+  }
+};
 
 // 从路由参数获取状态
 const status = ref(route.params.status || '')
@@ -208,35 +226,131 @@ const convertTaskData = (task) => {
 
 // 获取项目状态子任务数据
 const fetchSubtasks = async () => {
-  console.log('开始获取子任务数据，状态:', status.value)
-  loading.value = true
+  console.log('=== 开始获取子任务数据 ===');
+  console.log('请求状态:', status.value);
+  
+  loading.value = true;
+  
   try {
+    // 显示加载提示
+    let loadingMsg;
+    try {
+      loadingMsg = safeElMessageInfo(`正在加载${status.value}项目子任务数据...`, {
+        duration: 0
+      });
+    } catch (e) {
+      console.warn('加载消息创建失败:', e);
+    }
+    
     // 根据项目状态获取对应的任务数据
     // 使用状态映射以匹配数据库中的实际状态
-    const mappedStatus = mapStatusToDb(status.value)
-    console.log('映射后的状态:', mappedStatus)
-    const response = await projectApi.getTasksByProjectStatusTasks(mappedStatus)
-    console.log('API返回的原始数据:', response)
+    const mappedStatus = mapStatusToDb(status.value);
+    console.log('原始状态:', status.value);
+    console.log('映射后的状态:', mappedStatus);
+    
+    // 尝试从localStorage获取缓存数据
+    const cachedData = localStorage.getItem('projectTasksData');
+    const cachedStatus = localStorage.getItem('clickedStatus');
+    
+    let response;
+    
+    if (cachedData && cachedStatus === status.value) {
+      // 使用缓存数据
+      console.log('✅ 使用缓存的数据');
+      try {
+        response = JSON.parse(cachedData);
+        console.log('缓存数据解析成功，条数:', response.length);
+        // 清除缓存数据
+        localStorage.removeItem('projectTasksData');
+        localStorage.removeItem('clickedStatus');
+        console.log('已清除缓存数据');
+      } catch (parseError) {
+        console.error('❌ 缓存数据解析失败:', parseError);
+        throw new Error('缓存数据格式错误');
+      }
+    } else {
+      // 从API获取最新数据
+      console.log('🔄 从API获取最新数据');
+      console.log('调用API方法: getTasksByProjectStatusTasks');
+      console.log('API参数:', mappedStatus);
+      
+      try {
+        response = await projectApi.getTasksByProjectStatusTasks(mappedStatus);
+        console.log('✅ API调用成功');
+        console.log('API返回数据:', response);
+        console.log('返回数据类型:', typeof response);
+        console.log('返回数据长度:', response?.length || 0);
+      } catch (apiError) {
+        console.error('❌ API调用失败:', apiError);
+        console.error('错误详情:', {
+          message: apiError.message,
+          response: apiError.response,
+          status: apiError.response?.status
+        });
+        throw new Error(`API调用失败: ${apiError.message}`);
+      }
+    }
+    
+    // 验证响应数据
+    if (!response) {
+      console.warn('⚠️ 响应数据为空');
+      response = [];
+    }
+    
+    if (!Array.isArray(response)) {
+      console.error('❌ 响应数据不是数组格式:', typeof response);
+      console.log('响应数据内容:', response);
+      throw new Error('数据格式错误：期望数组格式');
+    }
+    
+    console.log('开始转换数据格式，原始数据条数:', response.length);
     
     // 转换数据格式以匹配前端表格字段
     const convertedResponse = response.map(convertTaskData);
-    console.log('转换后的数据:', convertedResponse)
+    console.log('✅ 数据转换完成');
+    console.log('转换后的数据条数:', convertedResponse.length);
+    console.log('第一条数据示例:', convertedResponse[0]);
     
-    subtasks.value = convertedResponse || []
-    filteredTasks.value = subtasks.value
-    totalTasks.value = subtasks.value.length
-    console.log('设置后的数据状态:', {
+    // 设置数据
+    subtasks.value = convertedResponse || [];
+    filteredTasks.value = subtasks.value;
+    totalTasks.value = subtasks.value.length;
+    
+    console.log('📊 数据设置完成:', {
       subtasks: subtasks.value.length,
       filteredTasks: filteredTasks.value.length,
       totalTasks: totalTasks.value
-    })
+    });
     
-    // 计算统计信息（使用已获取的数据）
-    calculateStats(subtasks.value)
+    // 计算统计信息
+    calculateStats(subtasks.value);
+    
+    // 关闭加载提示
+    loadingMsg.close();
+    
+    // 显示成功消息
+    if (subtasks.value.length > 0) {
+      ElMessage.success(`✅ 成功加载 ${subtasks.value.length} 条${status.value}项目子任务数据`);
+    } else {
+      ElMessage.info(`ℹ️ ${status.value}项目暂无子任务数据`);
+      console.log('ℹ️ 没有找到匹配的数据');
+    }
+    
   } catch (error) {
-    console.error(`获取${status.value}项目子任务失败:`, error)
+    console.error(`❌ 获取${status.value}项目子任务失败:`, error);
+    console.error('错误堆栈:', error.stack);
+    
+    // 关闭可能存在的加载提示
+    try {
+      ElMessage.closeAll();
+    } catch (e) {
+      // 忽略关闭消息的错误
+    }
+    
+    safeElMessageError(`获取${status.value}项目子任务数据失败：${error.message}`);
   } finally {
-    loading.value = false
+    loading.value = false;
+    console.log('=== 数据获取流程结束 ===\n');
   }
 }
 
@@ -317,11 +431,86 @@ const goBack = () => {
   router.push({ name: 'HomePage' })
 }
 
-// 批量导出当前页面数据
+// 导出全部数据
+const exportAllData = async () => {
+  try {
+    if (subtasks.value.length === 0) {
+      safeElMessageWarning('当前没有可导出的数据')
+      return
+    }
+    
+    // 询问用户确认
+    await ElMessageBox.confirm(
+      `确定要导出全部 ${subtasks.value.length} 条${status.value}项目子任务数据吗？`,
+      '导出确认',
+      {
+        confirmButtonText: '确定导出',
+        cancelButtonText: '取消',
+        type: 'info'
+      }
+    )
+    
+    exportLoading.value = true
+    
+    // 导出全部数据（使用所有已加载的数据）
+    // 这里可以根据实际需求选择不同的导出策略：
+    // 1. 导出当前页面显示的数据
+    // 2. 导出所有已加载的数据
+    // 3. 重新从API获取所有数据再导出
+    
+    let exportData = subtasks.value;
+    
+    // 如果需要重新获取所有数据（忽略当前筛选和分页）
+    // 可以在这里添加重新获取数据的逻辑
+    
+    // 创建Excel文件
+    const worksheet = XLSX.utils.json_to_sheet(exportData.map(task => ({
+      '任务名称': task.taskName,
+      '所属项目': task.projectName,
+      'WBS编码': task.wbsNo,
+      '负责人': task.owner,
+      '状态': task.status,
+      '计划开始时间': formatDate(task.planStart),
+      '计划结束时间': formatDate(task.planEnd),
+      '实际开始时间': formatDate(task.actual_start_date),
+      '实际结束时间': formatDate(task.actual_end_date),
+      '进度': task.progress + '%',
+      '创建时间': formatDate(task.created_at)
+    })));
+    
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, '项目子任务数据');
+    
+    // 生成文件
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    
+    // 创建下载链接
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${status.value}项目子任务_全部数据_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.xlsx`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    
+    safeElMessageSuccess(`成功导出 ${exportData.length} 条${status.value}项目子任务数据`)
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('导出失败:', error)
+      safeElMessageError('导出失败: ' + (error.message || '未知错误'))
+    }
+  } finally {
+    exportLoading.value = false
+  }
+}
+
+// 导出当前页面数据（保持原有功能）
 const exportCurrentData = async () => {
   try {
     if (filteredTasks.value.length === 0) {
-      ElMessage.warning('当前没有可导出的数据')
+      safeElMessageWarning('当前没有可导出的数据')
       return
     }
     
@@ -338,35 +527,43 @@ const exportCurrentData = async () => {
     
     exportLoading.value = true
     
-    // 获取当前显示的所有任务ID
-    const taskIds = filteredTasks.value.map(task => task.taskId).filter(id => id)
+    // 创建Excel文件
+    const worksheet = XLSX.utils.json_to_sheet(filteredTasks.value.map(task => ({
+      '任务名称': task.taskName,
+      '所属项目': task.projectName,
+      'WBS编码': task.wbsNo,
+      '负责人': task.owner,
+      '状态': task.status,
+      '计划开始时间': formatDate(task.planStart),
+      '计划结束时间': formatDate(task.planEnd),
+      '实际开始时间': formatDate(task.actual_start_date),
+      '实际结束时间': formatDate(task.actual_end_date),
+      '进度': task.progress + '%',
+      '创建时间': formatDate(task.created_at)
+    })));
     
-    // 如果有任务ID，使用任务导出API；否则使用项目导出API
-    let blob
-    if (taskIds.length > 0) {
-      // TODO: 需要实现任务导出API
-      // 暂时使用项目导出API作为示例
-      blob = await projectApi.exportProjects([]) // 导出所有项目数据作为示例
-    } else {
-      // 如果没有具体任务ID，导出所有相关项目数据
-      blob = await projectApi.exportProjects([])
-    }
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, '项目子任务数据');
+    
+    // 生成文件
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     
     // 创建下载链接
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `${status.value}项目子任务_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.xlsx`
+    link.download = `${status.value}项目子任务_当前页面_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.xlsx`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     window.URL.revokeObjectURL(url)
     
-    ElMessage.success(`成功导出 ${filteredTasks.value.length} 条${status.value}项目子任务数据`)
+    safeElMessageSuccess(`成功导出 ${filteredTasks.value.length} 条${status.value}项目子任务数据`)
   } catch (error) {
     if (error !== 'cancel') {
       console.error('导出失败:', error)
-      ElMessage.error('导出失败: ' + (error.message || '未知错误'))
+      safeElMessageError('导出失败: ' + (error.message || '未知错误'))
     }
   } finally {
     exportLoading.value = false
@@ -409,17 +606,59 @@ const handleSearch = () => {
   totalTasks.value = result.length
 }
 
+// 监听路由参数变化
+const watchRouteParams = () => {
+  const newStatus = route.params.status || '';
+  if (newStatus !== status.value) {
+    status.value = newStatus;
+    console.log('路由参数变化，新状态:', status.value);
+    if (status.value) {
+      fetchSubtasks();
+    }
+  }
+};
+
 // 页面加载时获取数据
 onMounted(() => {
-  console.log('ProjectStatusSubtasksDetailView mounted, route params:', route.params)
-  console.log('接收到的状态参数:', status.value)
+  console.log('=== ProjectStatusSubtasksDetailView mounted ===');
+  console.log('route params:', route.params);
+  console.log('route query:', route.query);
+  console.log('初始status.value:', status.value);
+  
+  // 检查localStorage中的缓存数据
+  const cachedData = localStorage.getItem('projectTasksData');
+  const cachedStatus = localStorage.getItem('clickedStatus');
+  console.log('缓存数据:', { cachedData: !!cachedData, cachedStatus });
+  
+  if (cachedData) {
+    try {
+      const parsedData = JSON.parse(cachedData);
+      console.log('缓存的数据内容:', parsedData);
+    } catch (e) {
+      console.error('解析缓存数据失败:', e);
+    }
+  }
   
   if (status.value) {
-    fetchSubtasks()
+    console.log(`准备加载${status.value}项目子任务数据`);
+    // 显示加载提示
+    safeElMessage(`正在加载${status.value}项目子任务数据...`, {
+      duration: 2000
+    });
+    fetchSubtasks();
   } else {
-    console.error('未提供项目状态参数')
+    console.error('❌ 未提供项目状态参数');
+    console.log('可用的路由参数:', Object.keys(route.params));
+    ElMessage.warning('未识别到项目状态参数，请从首页重新点击进入');
   }
-})
+});
+
+// 监听路由变化
+watch(() => route.params.status, (newStatus) => {
+  if (newStatus) {
+    watchRouteParams();
+  }
+});
 </script>
 
 <style scoped>
