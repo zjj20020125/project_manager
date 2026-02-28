@@ -25,5 +25,5 @@
 </template>
 
 <script setup>
-import TaskDetailTemplate from './TaskDetailTemplate.vue'
+import TaskDetailTemplate from './project/TaskDetailTemplate.vue'
 </script>
