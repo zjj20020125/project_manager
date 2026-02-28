@@ -165,32 +165,106 @@
           </el-card>
         </el-col>
       </el-row>
+    </div>
 
-      <!-- 第三行图表 -->
-      <el-row :gutter="15" class="chart-row">
-        <!-- 未评审责任人员流向桑基图 -->
-        <el-col :span="16">
+    <!-- 新增：SSCX核心统计图表区域 -->
+    <div class="charts-grid-container">
+      <el-row :gutter="20" class="chart-row">
+        <!-- SSCX项目分类滚动表格 -->
+        <el-col :span="12">
           <el-card shadow="hover" class="enhanced-chart-card">
             <template #header>
               <div class="card-header">
-                <span>🔗 未评审责任人员流向桑基图</span>
-                <el-tag type="info" size="small">流程追踪</el-tag>
+                <span>📊 SSCX项目分类统计</span>
+                <el-tag type="primary" size="small">Top 15 排名</el-tag>
               </div>
             </template>
-            <div ref="unreviewedSankeyRef" class="enhanced-chart-container"></div>
+            <div class="sscx-table-container">
+              <el-table 
+                :data="sscxTableData" 
+                height="320"
+                stripe
+                style="width: 100%"
+                :default-sort="{prop: 'value', order: 'descending'}"
+              >
+                <el-table-column prop="rank" label="排名" width="60" sortable>
+                  <template #default="scope">
+                    <el-tag 
+                      :type="getRankTagType(scope.row.rank)" 
+                      size="small"
+                      effect="dark"
+                    >
+                      {{ scope.row.rank }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="name" label="项目名称" min-width="200" show-overflow-tooltip>
+                  <template #default="scope">
+                    <span class="project-name">{{ scope.row.name }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="value" label="项目数量" width="100" sortable>
+                  <template #default="scope">
+                    <span class="count-number">{{ scope.row.value }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="percentage" label="占比" width="80" sortable>
+                  <template #default="scope">
+                    <el-progress 
+                      :percentage="scope.row.percentage" 
+                      :stroke-width="8"
+                      :show-text="false"
+                      :color="getProgressColor(scope.row.percentage)"
+                    />
+                    <span class="percentage-text">{{ scope.row.percentage }}%</span>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
           </el-card>
         </el-col>
 
-        <!-- 时间趋势折线图 -->
-        <el-col :span="8">
+        <!-- SSCX月度趋势折线图 -->
+        <el-col :span="12">
           <el-card shadow="hover" class="enhanced-chart-card">
             <template #header>
               <div class="card-header">
-                <span>📈 月度趋势分析</span>
-                <el-tag type="primary" size="small">时间序列</el-tag>
+                <span>📈 SSCX月度趋势分析</span>
+                <el-tag type="success" size="small">时间序列</el-tag>
               </div>
             </template>
-            <div ref="trendLineRef" class="enhanced-chart-container"></div>
+            <div ref="sscxTrendRef" class="enhanced-chart-container"></div>
+          </el-card>
+        </el-col>
+      </el-row>
+    </div>
+
+    <!-- 新增：SSCX数据接口图表区域 -->
+    <div class="charts-grid-container">
+      <el-row :gutter="20" class="chart-row">
+        <!-- SSCX问题分类热力图 -->
+        <el-col :span="12">
+          <el-card shadow="hover" class="enhanced-chart-card">
+            <template #header>
+              <div class="card-header">
+                <span>📊 SSCX问题分类热力图</span>
+                <el-tag type="warning" size="small">分类分析</el-tag>
+              </div>
+            </template>
+            <div ref="sscxProblemHeatmapRef" class="enhanced-chart-container"></div>
+          </el-card>
+        </el-col>
+
+        <!-- SSCX处理时效散点图 -->
+        <el-col :span="12">
+          <el-card shadow="hover" class="enhanced-chart-card">
+            <template #header>
+              <div class="card-header">
+                <span>⏱️ SSCX处理时效散点图</span>
+                <el-tag type="danger" size="small">时效分析</el-tag>
+              </div>
+            </template>
+            <div ref="sscxProcessingScatterRef" class="enhanced-chart-container"></div>
           </el-card>
         </el-col>
       </el-row>
@@ -357,6 +431,12 @@ import {
 } from 'element-plus';
 import { projectApi } from '../../api/index.js';
 import { useRouter } from 'vue-router';
+import {
+  convertSscxStatisticsData,
+  convertSscxTrendData,
+  getSscxDataSummary,
+  getSscxChartConfig
+} from '../../utils/sscxDataProcessor.js';
 
 export default {
   name: 'NcrEnhancedDashboard',
@@ -393,8 +473,10 @@ export default {
     const unreviewedSankeyRef = ref(null);
     const trendLineRef = ref(null);
     // 新增：SSCX图表引用
-    const sscxPieRef = ref(null);
     const sscxTrendRef = ref(null);
+    // 新增：SSCX数据接口图表引用
+    const sscxProblemHeatmapRef = ref(null);
+    const sscxProcessingScatterRef = ref(null);
 
     // 数据状态
     const ncrDetails = ref([]);
@@ -410,6 +492,9 @@ export default {
     // 新增：SSCX数据状态
     const sscxData = ref([]);
     const sscxTrendData = ref([]);
+    // 新增：SSCX接口数据状态
+    const sscxInterfaceData = ref([]);
+    const sscxProcessingData = ref([]);
 
     // 筛选条件
     const filterStatus = ref('');
@@ -430,8 +515,10 @@ export default {
     let unreviewedSankeyChart = null;
     let trendLineChart = null;
     // 新增：SSCX图表实例
-    let sscxPieChart = null;
     let sscxTrendChart = null;
+    // 新增：SSCX数据接口图表实例
+    let sscxProblemHeatmapChart = null;
+    let sscxProcessingScatterChart = null;
 
     // 计算属性
     const totalNcrCount = computed(() => ncrDetails.value.length);
@@ -452,6 +539,9 @@ export default {
       return Math.floor(Math.random() * 10) + 5;
     });
 
+    // 新增：SSCX表格数据
+    const sscxTableData = ref([]);
+    
     // 新增：SSCX计算属性
     const sscxTotalCount = computed(() => {
       return sscxData.value.reduce((sum, item) => sum + item.value, 0);
@@ -485,9 +575,10 @@ export default {
           responsibilityResponse,
           unreviewedResponse,
           ncrListResponse,
-          // 新增：SSCX数据获取
+          // SSCX核心接口数据获取
           sscxResponse,
-          sscxTrendResponse
+          sscxTrendResponse,
+          sscxYearlyResponse
         ] = await Promise.all([
           projectApi.getNcrTypeDistribution().catch(err => {
             console.error('类型分布API失败:', err);
@@ -513,13 +604,18 @@ export default {
             console.error('NCR列表API失败:', err);
             return [];
           }),
-          // 新增：SSCX API调用（带错误处理）
+          // SSCX核心接口调用（带错误处理）
           projectApi.getSscxStatistics().catch(err => {
             console.error('SSCX统计API失败:', err);
             return [];
           }),
           projectApi.getSscxTrendStatistics().catch(err => {
             console.error('SSCX趋势API失败:', err);
+            return [];
+          }),
+          // 新增：SSCX年度统计接口（前15名）
+          projectApi.getSscxYearlyStats().catch(err => {
+            console.error('SSCX年度统计API失败:', err);
             return [];
           })
         ]);
@@ -647,43 +743,146 @@ export default {
           applyFilters();
         }
 
-        // 新增：处理SSCX数据
-        console.log('SSCX Response:', sscxResponse);
-        console.log('SSCX Trend Response:', sscxTrendResponse);
+        // 新增：处理SSCX数据（优先使用年度统计数据）
+        console.log('🔄 开始处理SSCX数据...');
+        console.log('原始SSCX统计响应类型:', typeof sscxResponse, '值:', sscxResponse);
+        console.log('原始SSCX趋势响应类型:', typeof sscxTrendResponse, '值:', sscxTrendResponse);
+        console.log('SSCX年度统计响应类型:', typeof sscxYearlyResponse, '值:', sscxYearlyResponse);
         
-        if (Array.isArray(sscxResponse) && sscxResponse.length > 0) {
-          sscxData.value = sscxResponse;
-          console.log('SSCX Data set:', sscxData.value);
-          initSscxPieChart(sscxResponse);
-        } else {
-          // 使用模拟数据
-          console.warn('SSCX统计数据为空，使用模拟数据');
+        // 优先使用新的年度统计数据接口
+        try {
+          if (Array.isArray(sscxYearlyResponse) && sscxYearlyResponse.length > 0) {
+            console.log('📊 使用SSCX年度统计数据，项目数:', sscxYearlyResponse.length);
+            
+            // 直接使用年度统计数据（已经是前15名）
+            const convertedSscxData = sscxYearlyResponse.slice(0, 15);
+            
+            sscxData.value = convertedSscxData;
+            console.log('✅ SSCX年度统计数据处理完成:', {
+              项目数: convertedSscxData.length,
+              前5个项目: convertedSscxData.slice(0, 5)
+            });
+            
+            // 初始化SSCX表格数据
+            if (convertedSscxData.length > 0) {
+              updateSscxTableData(convertedSscxData);
+              ElMessage.success(`SSCX年度统计表格加载成功 (${convertedSscxData.length}个项目)`);
+            } else {
+              throw new Error('年度统计数据为空');
+            }
+          } else if (sscxResponse && typeof sscxResponse === 'object' && Object.keys(sscxResponse).length > 0) {
+            console.log('📊 回退到原始SSCX统计数据，项目数:', Object.keys(sscxResponse).length);
+            
+            // 使用数据转换工具处理统计数据
+            const convertedSscxData = convertSscxStatisticsData(sscxResponse, {
+              sortBy: 'value',
+              sortOrder: 'desc',
+              limit: 15, // 只显示前15个项目
+              excludeZero: true,
+              minValue: 1
+            });
+            
+            sscxData.value = convertedSscxData;
+            console.log('✅ SSCX统计数据转换完成:', {
+              原始项目数: Object.keys(sscxResponse).length,
+              转换后项目数: convertedSscxData.length,
+              前5个项目: convertedSscxData.slice(0, 5)
+            });
+            
+            // 获取数据摘要
+            const summary = getSscxDataSummary(sscxResponse);
+            console.log('📊 SSCX统计摘要:', summary);
+            
+            // 初始化SSCX表格数据
+            if (convertedSscxData.length > 0) {
+              updateSscxTableData(convertedSscxData);
+              ElMessage.success(`SSCX统计表格加载成功 (${convertedSscxData.length}个项目)`);
+            } else {
+              throw new Error('转换后数据为空');
+            }
+          } else {
+            throw new Error('原始数据为空或格式无效');
+          }
+        } catch (error) {
+          console.warn('⚠️ SSCX统计数据处理失败:', error.message, '使用模拟数据');
+          // 更丰富和真实的模拟数据
           const mockSscxData = [
-            { name: '类型A', value: 25 },
-            { name: '类型B', value: 18 },
-            { name: '类型C', value: 15 },
-            { name: '类型D', value: 12 },
-            { name: '类型E', value: 8 }
+            { name: 'CRH6F牵引变压器风机项目', value: 45, itemStyle: { color: '#5470c6' } },
+            { name: '广州地铁18号线工程', value: 38, itemStyle: { color: '#91cc75' } },
+            { name: '顺特电气SYJ9002系统', value: 32, itemStyle: { color: '#fac858' } },
+            { name: '神华集团八轴货运机车', value: 28, itemStyle: { color: '#ee6666' } },
+            { name: 'HXD1D型电力机车升级', value: 25, itemStyle: { color: '#73c0de' } },
+            { name: '复兴号动车组控制系统', value: 22, itemStyle: { color: '#3ba272' } },
+            { name: '城市轨道交通信号系统', value: 19, itemStyle: { color: '#fc8452' } },
+            { name: '高速铁路通信设备', value: 17, itemStyle: { color: '#9a60b4' } },
+            { name: '智能电网调度系统', value: 15, itemStyle: { color: '#ea7ccc' } },
+            { name: '新能源汽车充电桩网络', value: 13, itemStyle: { color: '#5470c6' } },
+            { name: '工业自动化生产线', value: 11, itemStyle: { color: '#91cc75' } },
+            { name: '智慧城市管理系统', value: 9, itemStyle: { color: '#fac858' } },
+            { name: '5G基站建设', value: 7, itemStyle: { color: '#ee6666' } },
+            { name: '数据中心基础设施', value: 6, itemStyle: { color: '#73c0de' } },
+            { name: '其他重点项目', value: 20, itemStyle: { color: '#3ba272' } }
           ];
           sscxData.value = mockSscxData;
-          initSscxPieChart(mockSscxData);
+          updateSscxTableData(mockSscxData);
+          ElMessage.warning('SSCX统计使用模拟数据展示');
         }
 
-        if (Array.isArray(sscxTrendResponse) && sscxTrendResponse.length > 0) {
-          sscxTrendData.value = sscxTrendResponse;
-          console.log('SSCX Trend Data set:', sscxTrendData.value);
-          initSscxTrendChart(sscxTrendResponse);
-        } else {
-          // 使用模拟数据
-          console.warn('SSCX趋势数据为空，使用模拟数据');
-          const months = ['2023-09', '2023-10', '2023-11', '2023-12', '2024-01', '2024-02'];
-          const mockTrendData = months.map((month, index) => ({
-            month: month,
-            total: 20 + Math.floor(Math.random() * 15)
-          }));
+        // 处理SSCX趋势数据
+        try {
+          if (Array.isArray(sscxTrendResponse) && sscxTrendResponse.length > 0) {
+            console.log('📈 原始SSCX趋势数据点数:', sscxTrendResponse.length);
+            
+            // 使用数据转换工具处理趋势数据
+            const convertedTrendData = convertSscxTrendData(sscxTrendResponse, {
+              aggregate: true, // 聚合为总计
+              formatMonth: true
+            });
+            
+            sscxTrendData.value = convertedTrendData;
+            console.log('✅ SSCX趋势数据转换完成:', {
+              时间点数: convertedTrendData.months.length,
+              系列数: convertedTrendData.series.length,
+              月份范围: `${convertedTrendData.months[0]} 至 ${convertedTrendData.months[convertedTrendData.months.length - 1]}`
+            });
+            
+            // 获取趋势数据摘要
+            const trendSummary = getSscxDataSummary(sscxTrendResponse, true);
+            console.log('📈 SSCX趋势摘要:', trendSummary);
+            
+            // 初始化SSCX趋势图
+            if (convertedTrendData.series && convertedTrendData.series.length > 0) {
+              initSscxTrendChart(convertedTrendData);
+              ElMessage.success(`SSCX趋势图表加载成功 (${convertedTrendData.months.length}个时间点)`);
+            } else {
+              throw new Error('转换后趋势数据为空');
+            }
+          } else {
+            throw new Error('原始趋势数据为空或格式无效');
+          }
+        } catch (error) {
+          console.warn('⚠️ SSCX趋势数据处理失败:', error.message, '启用趋势数据降级');
+          ElMessage.info({
+            message: '📈 趋势数据获取失败，显示历史参考数据',
+            type: 'info',
+            duration: 3000
+          });
+          const months = ['2023年9月', '2023年10月', '2023年11月', '2023年12月', '2024年1月', '2024年2月'];
+          const mockTrendData = {
+            months: months,
+            series: [{
+              name: '总计',
+              type: 'line',
+              data: [120, 132, 101, 134, 90, 230],
+              smooth: true
+            }]
+          };
           sscxTrendData.value = mockTrendData;
           initSscxTrendChart(mockTrendData);
+          ElMessage.warning('SSCX趋势使用模拟数据展示');
         }
+
+        // SSCX数据处理已完成
 
         ElMessage.success('数据加载完成（部分使用模拟数据）');
 
@@ -863,7 +1062,7 @@ export default {
         tooltip: {
           trigger: 'axis',
           axisPointer: { type: 'shadow' },
-          formatter: '{b}: {c}项'
+          formatter: '{b}: {c}'
         },
         grid: {
           left: '3%',
@@ -920,7 +1119,7 @@ export default {
           },
           formatter: (params) => {
             const item = params[0];
-            return `${item.name}<br/>数量: ${item.value}项`;
+            return `${item.name}<br/>Total: ${item.value}`;
           }
         },
         grid: {
@@ -1062,109 +1261,153 @@ export default {
       trendLineChart.setOption(option);
     };
 
-    // 新增：SSCX图表初始化方法
+    // 新增：SSCX饼图初始化（使用现代化配置）
+    // 注意：此方法已废弃，因为已改为表格展示
+    /*
     const initSscxPieChart = (data) => {
-      if (!sscxPieRef.value || !data || data.length === 0) return;
-      
-      if (sscxPieChart) sscxPieChart.dispose();
-      sscxPieChart = echarts.init(sscxPieRef.value);
-      
-      const option = {
-        title: {
-          text: 'SSCX类别分布',
-          left: 'center',
-          top: 10,
-          textStyle: { fontSize: 14, fontWeight: 'bold' }
-        },
-        tooltip: {
-          trigger: 'item',
-          formatter: '{a} <br/>{b}: {c}项 ({d}%)'
-        },
-        legend: {
-          orient: 'horizontal',
-          bottom: 10,
-          itemWidth: 12,
-          itemHeight: 12
-        },
-        series: [{
-          name: 'SSCX类别',
-          type: 'pie',
-          radius: ['40%', '70%'],
-          center: ['50%', '50%'],
-          avoidLabelOverlap: false,
-          itemStyle: {
-            borderRadius: 10,
-            borderColor: '#fff',
-            borderWidth: 2
-          },
-          label: {
-            show: true,
-            formatter: '{b}: {c}项',
-            minMargin: 5
-          },
-          emphasis: {
-            label: {
-              show: true,
-              fontSize: '14',
-              fontWeight: 'bold'
-            }
-          },
-          data: data
-        }]
-      };
-      
-      sscxPieChart.setOption(option);
+      // 已废弃的方法内容...
+    };
+    */
+
+    // 修改：SSCX表格数据更新方法
+    const updateSscxTableData = (data) => {
+      try {
+        console.log('📋 开始更新SSCX表格数据，原始数据:', data);
+        
+        if (!data || data.length === 0) {
+          console.warn('⚠️ SSCX表格数据为空');
+          sscxTableData.value = [];
+          return;
+        }
+        
+        // 计算总数量
+        const total = data.reduce((sum, item) => sum + item.value, 0);
+        console.log('📊 SSCX数据总和:', total);
+        
+        // 构造表格数据
+        const tableData = data.map((item, index) => ({
+          rank: index + 1,
+          name: item.name || '未知项目',
+          value: item.value || 0,
+          percentage: total > 0 ? parseFloat(((item.value / total) * 100).toFixed(1)) : 0,
+          rawItem: item // 保存原始数据用于后续操作
+        }));
+        
+        // 按数量降序排序（虽然表格会自动排序，但这里确保顺序正确）
+        tableData.sort((a, b) => b.value - a.value);
+        
+        // 更新响应式数据
+        sscxTableData.value = tableData;
+        
+        console.log('✅ SSCX表格数据更新完成:', {
+          总项目数: tableData.length,
+          总数量: total,
+          前5名: tableData.slice(0, 5)
+        });
+        
+        // 显示成功消息
+        ElMessage.success(`SSCX项目统计表格已更新 (${tableData.length}个项目)`);
+        
+      } catch (error) {
+        console.error('💥 SSCX表格数据更新失败:', error);
+        ElMessage.error('SSCX表格数据更新失败: ' + error.message);
+        sscxTableData.value = [];
+      }
     };
 
-    const initSscxTrendChart = (data) => {
-      if (!sscxTrendRef.value || !data || data.length === 0) return;
-      
-      if (sscxTrendChart) sscxTrendChart.dispose();
-      sscxTrendChart = echarts.init(sscxTrendRef.value);
-      
-      // 提取月份和总量数据
-      const months = data.map(item => item.month);
-      const totals = data.map(item => item.total);
-      
-      const option = {
-        title: {
-          text: '近一年SSCX趋势',
-          left: 'center',
-          top: 10,
-          textStyle: { fontSize: 14, fontWeight: 'bold' }
-        },
-        tooltip: {
-          trigger: 'axis',
-          formatter: (params) => {
-            const item = params[0];
-            return `${item.name}<br/>总量: ${item.value}项`;
+    // 新增：SSCX趋势图初始化（使用现代化配置）
+    const initSscxTrendChart = (convertedData) => {
+      try {
+        console.log('📈 开始初始化SSCX趋势图，数据:', convertedData);
+        
+        if (!sscxTrendRef.value) {
+          console.warn('⚠️ SSCX趋势图容器引用为空');
+          return;
+        }
+        
+        if (!convertedData || !convertedData.series || convertedData.series.length === 0) {
+          console.warn('⚠️ SSCX趋势图数据为空或格式无效');
+          return;
+        }
+        
+        // 销毁旧实例
+        if (sscxTrendChart) {
+          sscxTrendChart.dispose();
+        }
+        
+        // 初始化图表
+        sscxTrendChart = echarts.init(sscxTrendRef.value);
+        console.log('✅ SSCX趋势图实例创建成功');
+        
+        // 使用配置工具生成图表配置
+        const chartConfig = getSscxChartConfig('line', {
+          title: 'SSCX月度趋势分析',
+          showLegend: true,
+          animation: true,
+          colorPalette: [
+            '#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de'
+          ]
+        });
+        
+        // 设置坐标轴
+        chartConfig.xAxis.data = convertedData.months;
+        chartConfig.yAxis = {
+          type: 'value',
+          name: '问题数量',
+          axisLabel: {
+            formatter: '{value}项'
           }
-        },
-        grid: {
+        };
+        
+        // 设置数据系列
+        chartConfig.series = convertedData.series.map((serie, index) => ({
+          ...serie,
+          smooth: true,
+          symbolSize: 6,
+          lineStyle: {
+            width: 3
+          },
+          areaStyle: {
+            opacity: 0.1
+          }
+        }));
+        
+        // 添加额外配置
+        chartConfig.grid = {
           left: '10%',
           right: '10%',
+          bottom: '15%',
           top: '20%',
-          bottom: '15%'
-        },
-        xAxis: {
-          type: 'category',
-          data: months
-        },
-        yAxis: {
-          type: 'value',
-          name: '数量'
-        },
-        series: [{
-          name: '总量',
-          type: 'line',
-          data: totals,
-          smooth: true,
-          itemStyle: { color: '#409EFF' },
-          areaStyle: { opacity: 0.3 }
-        }]
-      };
-      
-      sscxTrendChart.setOption(option);
+          containLabel: true
+        };
+        
+        chartConfig.tooltip = {
+          trigger: 'axis',
+          formatter: (params) => {
+            let result = `${params[0].axisValue}<br/>`;
+            params.forEach(param => {
+              result += `<span style="display:inline-block;margin-right:5px;border-radius:10px;width:10px;height:10px;background-color:${param.color};"></span>`;
+              result += `${param.seriesName}: ${param.value}项<br/>`;
+            });
+            return result;
+          }
+        };
+        
+        // 设置配置
+        sscxTrendChart.setOption(chartConfig);
+        console.log('✅ SSCX趋势图配置设置完成');
+        
+        // 添加点击事件
+        sscxTrendChart.on('click', (params) => {
+          console.log('SSCX趋势点击:', params.seriesName, params.name, params.value);
+          ElMessage.info(`${params.seriesName} 在 ${params.name} 有 ${params.value} 项问题`);
+        });
+        
+        console.log('🎉 SSCX趋势图初始化完成');
+      } catch (error) {
+        console.error('💥 SSCX趋势图初始化失败:', error);
+        ElMessage.error('SSCX趋势图初始化失败: ' + error.message);
+      }
     };
 
     // 数据处理方法
@@ -1229,6 +1472,247 @@ export default {
       updatePaginatedData();
     };
 
+    // 新增：SSCX接口数据获取方法
+    const fetchSscxInterfaceData = async () => {
+      // 模拟从SSCX接口获取问题分类数据
+      // 实际项目中这里应该调用具体的API接口
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          const mockData = [
+            { category: '质量问题', subCategory: '尺寸偏差', count: 25, severity: '高' },
+            { category: '质量问题', subCategory: '表面缺陷', count: 18, severity: '中' },
+            { category: '工艺问题', subCategory: '加工参数', count: 15, severity: '高' },
+            { category: '工艺问题', subCategory: '设备故障', count: 12, severity: '中' },
+            { category: '材料问题', subCategory: '原材料缺陷', count: 10, severity: '高' },
+            { category: '材料问题', subCategory: '供应商问题', count: 8, severity: '中' },
+            { category: '人员问题', subCategory: '操作失误', count: 6, severity: '低' },
+            { category: '人员问题', subCategory: '培训不足', count: 4, severity: '中' }
+          ];
+          resolve(mockData);
+        }, 500);
+      });
+    };
+
+    const fetchSscxProcessingData = async () => {
+      // 模拟从SSCX接口获取处理时效数据
+      // 实际项目中这里应该调用具体的API接口
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          const mockData = [
+            { id: 1, category: '质量问题', createTime: '2024-01-15', processTime: 3, status: '已完成' },
+            { id: 2, category: '工艺问题', createTime: '2024-01-16', processTime: 5, status: '处理中' },
+            { id: 3, category: '材料问题', createTime: '2024-01-17', processTime: 2, status: '已完成' },
+            { id: 4, category: '质量问题', createTime: '2024-01-18', processTime: 7, status: '待处理' },
+            { id: 5, category: '人员问题', createTime: '2024-01-19', processTime: 1, status: '已完成' },
+            { id: 6, category: '工艺问题', createTime: '2024-01-20', processTime: 4, status: '处理中' },
+            { id: 7, category: '质量问题', createTime: '2024-01-21', processTime: 6, status: '待处理' },
+            { id: 8, category: '材料问题', createTime: '2024-01-22', processTime: 3, status: '已完成' }
+          ];
+          resolve(mockData);
+        }, 500);
+      });
+    };
+
+    // 新增：生成模拟热力图数据
+    const generateMockProblemHeatmapData = () => {
+      const categories = ['质量问题', '工艺问题', '材料问题', '设备问题', '人员问题'];
+      const subCategories = ['类型A', '类型B', '类型C', '类型D', '类型E'];
+      const severities = ['高', '中', '低'];
+      
+      const data = [];
+      categories.forEach((category, i) => {
+        subCategories.forEach((subCategory, j) => {
+          severities.forEach((severity, k) => {
+            data.push([
+              i,
+              j,
+              k,
+              Math.floor(Math.random() * 30) + 5
+            ]);
+          });
+        });
+      });
+      return data;
+    };
+
+    // 新增：生成模拟散点图数据
+    const generateMockProcessingScatterData = () => {
+      const categories = ['质量问题', '工艺问题', '材料问题', '设备问题', '人员问题'];
+      const statuses = ['已完成', '处理中', '待处理'];
+      
+      const data = [];
+      categories.forEach((category, i) => {
+        statuses.forEach((status, j) => {
+          const count = Math.floor(Math.random() * 20) + 5;
+          for (let k = 0; k < count; k++) {
+            data.push([
+              i + (Math.random() - 0.5) * 0.3, // x轴：分类
+              Math.floor(Math.random() * 10) + 1, // y轴：处理时间
+              category, // 分类名称
+              status, // 状态
+              Math.floor(Math.random() * 100) + 20 // 气泡大小
+            ]);
+          }
+        });
+      });
+      return data;
+    };
+
+    // 新增：SSCX问题分类热力图初始化
+    const initSscxProblemHeatmapChart = (data) => {
+      if (!sscxProblemHeatmapRef.value) return;
+      
+      if (sscxProblemHeatmapChart) sscxProblemHeatmapChart.dispose();
+      sscxProblemHeatmapChart = echarts.init(sscxProblemHeatmapRef.value);
+      
+      const categories = ['质量问题', '工艺问题', '材料问题', '设备问题', '人员问题'];
+      const subCategories = ['类型A', '类型B', '类型C', '类型D', '类型E'];
+      const severities = ['高', '中', '低'];
+      
+      const option = {
+        title: {
+          text: 'SSCX问题分类热力图',
+          left: 'center',
+          top: 10,
+          textStyle: { fontSize: 14, fontWeight: 'bold' }
+        },
+        tooltip: {
+          position: 'top',
+          formatter: (params) => {
+            return `
+              <div>
+                <strong>${categories[params.value[0]]}</strong><br/>
+                子分类: ${subCategories[params.value[1]]}<br/>
+                严重程度: ${severities[params.value[2]]}<br/>
+                数量: ${params.value[3]}项
+              </div>
+            `;
+          }
+        },
+        grid: {
+          height: '60%',
+          top: '20%',
+          left: '15%',
+          right: '10%'
+        },
+        xAxis: {
+          type: 'category',
+          data: subCategories,
+          splitArea: { show: true }
+        },
+        yAxis: {
+          type: 'category',
+          data: categories,
+          splitArea: { show: true }
+        },
+        visualMap: {
+          min: 0,
+          max: 35,
+          calculable: true,
+          orient: 'horizontal',
+          left: 'center',
+          bottom: '5%',
+          inRange: {
+            color: ['#e0f3db', '#a8ddb5', '#7bccc4', '#43a2ca', '#0868ac']
+          }
+        },
+        series: [{
+          name: '问题数量',
+          type: 'heatmap',
+          data: data,
+          label: {
+            show: true
+          },
+          emphasis: {
+            itemStyle: {
+              shadowBlur: 10,
+              shadowColor: 'rgba(0, 0, 0, 0.5)'
+            }
+          }
+        }]
+      };
+      
+      sscxProblemHeatmapChart.setOption(option);
+    };
+
+    // 新增：SSCX处理时效散点图初始化
+    const initSscxProcessingScatterChart = (data) => {
+      if (!sscxProcessingScatterRef.value) return;
+      
+      if (sscxProcessingScatterChart) sscxProcessingScatterChart.dispose();
+      sscxProcessingScatterChart = echarts.init(sscxProcessingScatterRef.value);
+      
+      const categories = ['质量问题', '工艺问题', '材料问题', '设备问题', '人员问题'];
+      const statusColors = {
+        '已完成': '#52c41a',
+        '处理中': '#1890ff',
+        '待处理': '#faad14'
+      };
+      
+      const seriesData = {};
+      data.forEach(item => {
+        if (!seriesData[item[3]]) {
+          seriesData[item[3]] = [];
+        }
+        seriesData[item[3]].push({
+          value: [item[0], item[1]],
+          symbolSize: item[4],
+          category: item[2],
+          status: item[3]
+        });
+      });
+      
+      const series = Object.keys(seriesData).map(status => ({
+        name: status,
+        type: 'scatter',
+        data: seriesData[status],
+        itemStyle: {
+          color: statusColors[status] || '#999'
+        },
+        emphasis: {
+          focus: 'series'
+        }
+      }));
+      
+      const option = {
+        title: {
+          text: 'SSCX处理时效散点图',
+          left: 'center',
+          top: 10,
+          textStyle: { fontSize: 14, fontWeight: 'bold' }
+        },
+        tooltip: {
+          trigger: 'item',
+          formatter: (params) => {
+            return `
+              <div>
+                <strong>${params.data.category}</strong><br/>
+                状态: ${params.seriesName}<br/>
+                处理时间: ${params.value[1]}天<br/>
+                数量: ${Math.floor(params.data.symbolSize / 20)}项
+              </div>
+            `;
+          }
+        },
+        legend: {
+          data: Object.keys(statusColors),
+          bottom: 10
+        },
+        xAxis: {
+          type: 'category',
+          data: categories,
+          name: '问题分类'
+        },
+        yAxis: {
+          type: 'value',
+          name: '处理时间(天)'
+        },
+        series: series
+      };
+      
+      sscxProcessingScatterChart.setOption(option);
+    };
+
     const updatePaginatedData = () => {
       const start = (currentPage.value - 1) * pageSize.value;
       const end = start + pageSize.value;
@@ -1278,15 +1762,24 @@ export default {
     };
 
     const handleError = (error) => {
+      console.error('🚨 组件错误处理:', error);
+      
       if (error.message && error.message.includes('runtime.lastError')) {
         if (!window.extensionErrorNotified) {
-          ElMessage.warning('检测到浏览器扩展干扰，建议临时禁用相关扩展');
+          ElMessage.warning({
+            message: '检测到浏览器扩展干扰，建议临时禁用相关扩展',
+            duration: 6000
+          });
           window.extensionErrorNotified = true;
           setTimeout(() => {
             window.extensionErrorNotified = false;
           }, 60000);
         }
-        setTimeout(() => fetchData(), 2000);
+        // 延迟重试
+        setTimeout(() => fetchData(), 3000);
+      } else if (error.type === 'extension_interference') {
+        // 已经由API拦截器处理过的扩展干扰错误
+        console.log('🔄 扩展干扰错误已在API层处理');
       } else {
         ElMessage.error('数据加载失败，请稍后重试');
       }
@@ -1348,6 +1841,21 @@ export default {
       return statusMap[status] || 'info';
     };
 
+    // 表格辅助方法
+    const getRankTagType = (rank) => {
+      if (rank <= 3) return 'danger';  // 前3名红色
+      if (rank <= 5) return 'warning'; // 4-5名橙色
+      if (rank <= 10) return 'primary'; // 6-10名蓝色
+      return 'info'; // 11-15名灰色
+    };
+    
+    const getProgressColor = (percentage) => {
+      if (percentage >= 20) return '#52c41a'; // 绿色
+      if (percentage >= 10) return '#1890ff'; // 蓝色
+      if (percentage >= 5) return '#faad14';  // 黄色
+      return '#ff4d4f'; // 红色
+    };
+
     // 生命周期钩子
     onMounted(() => {
       fetchData();
@@ -1356,16 +1864,18 @@ export default {
 
     onUnmounted(() => {
       window.removeEventListener('resize', handleResize);
+      // 清理所有图表实例
       [typeRoseChart, stageRadarChart, priorityLiquidChart, 
-       dqjdWaterfallChart, responsibilityTreeChart, unreviewedSankeyChart, trendLineChart]
-        .forEach(chart => {
-          if (chart) chart.dispose();
-        });
+       dqjdWaterfallChart, responsibilityTreeChart, unreviewedSankeyChart,
+       trendLineChart, sscxTrendChart, sscxProblemHeatmapChart, sscxProcessingScatterChart].forEach(chart => {
+        if (chart) chart.dispose();
+      });
     });
 
     const handleResize = () => {
       [typeRoseChart, stageRadarChart, priorityLiquidChart, 
-       dqjdWaterfallChart, responsibilityTreeChart, unreviewedSankeyChart, trendLineChart]
+       dqjdWaterfallChart, responsibilityTreeChart, unreviewedSankeyChart, 
+       trendLineChart, sscxTrendChart]
         .forEach(chart => {
           if (chart) chart.resize();
         });
@@ -1420,8 +1930,9 @@ export default {
       responsibilityTreeRef,
       unreviewedSankeyRef,
       trendLineRef,
-      sscxPieRef,
       sscxTrendRef,
+      sscxProblemHeatmapRef,
+      sscxProcessingScatterRef,
       
       // 方法
       refreshAllData,
@@ -1439,7 +1950,19 @@ export default {
       getCurrentStageTagType,
       getPriorityTagType,
       getStatusTagType,
-      applyFilters
+      applyFilters,
+      // 新增SSCX方法
+      fetchSscxInterfaceData,
+      fetchSscxProcessingData,
+      generateMockProblemHeatmapData,
+      generateMockProcessingScatterData,
+      initSscxProblemHeatmapChart,
+      initSscxProcessingScatterChart,
+      initSscxTrendChart,
+      updateSscxTableData,
+      getRankTagType,
+      getProgressColor,
+      sscxTableData
     };
   }
 };
@@ -1579,7 +2102,50 @@ export default {
 
 .enhanced-chart-container {
   width: 100%;
-  height: 300px;
+  height: 320px;
+}
+
+/* SSCX表格容器样式 */
+.sscx-table-container {
+  padding: 10px;
+  height: 320px;
+  display: flex;
+  flex-direction: column;
+}
+
+.project-name {
+  font-weight: 500;
+  color: #303133;
+}
+
+.count-number {
+  font-weight: 600;
+  color: #409EFF;
+  font-size: 14px;
+}
+
+.percentage-text {
+  font-size: 12px;
+  color: #606266;
+  margin-left: 5px;
+}
+
+:deep(.el-table__row) {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+:deep(.el-table__row:hover) {
+  background-color: #f5f7fa;
+}
+
+:deep(.el-table .cell) {
+  padding: 8px 0;
+}
+
+:deep(.el-table__header th) {
+  background-color: #f8f9fa;
+  font-weight: 600;
 }
 
 .enhanced-list-card {
@@ -1645,5 +2211,61 @@ export default {
   font-weight: bold;
   color: #409EFF;
   display: block;
+}
+
+/* SSCX图表摘要样式 */
+.chart-summary {
+  margin-top: 15px;
+  padding: 12px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-radius: 8px;
+  border-left: 4px solid #409EFF;
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dashed #dee2e6;
+}
+
+.summary-item:last-child {
+  margin-bottom: 0;
+  border-bottom: none;
+}
+
+.summary-label {
+  font-size: 13px;
+  color: #6c757d;
+  font-weight: 500;
+}
+
+.summary-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+  background: linear-gradient(135deg, #409EFF 0%, #66b1ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .chart-summary {
+    padding: 8px;
+  }
+  
+  .summary-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  
+  .summary-label, .summary-value {
+    font-size: 12px;
+  }
 }
 </style>

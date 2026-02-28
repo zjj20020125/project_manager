@@ -48,18 +48,43 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   response => {
     // 对响应数据做点什么
-    console.log('API响应成功:', response.config.url, response.status); // 添加响应日志
+    console.log('✅ API响应成功:', response.config.url, response.status); // 添加响应日志
     return response.data;
   },
   async error => {
+    console.log('❌ API响应错误:', error.message);
+    
+    // 处理Promise相关的异步错误
+    if (error.message && error.message.includes('message channel closed')) {
+      console.warn('🔧 检测到消息通道关闭错误，可能是扩展干扰');
+      // 尝试重新发送请求
+      const config = error.config;
+      if (config && (!config.__retryCount || config.__retryCount < 3)) {
+        if (!config.__retryCount) config.__retryCount = 0;
+        config.__retryCount += 1;
+        console.log(`🔄 第 ${config.__retryCount} 次重试请求`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return apiClient(config);
+      } else {
+        showExtensionError();
+        return Promise.reject({
+          message: '浏览器扩展干扰，请禁用相关扩展后重试',
+          type: 'extension_interference',
+          originalError: error.message
+        });
+      }
+    }
+    
     // 使用专门的扩展干扰处理工具
     if (isExtensionInterferenceError(error)) {
+      console.warn('🔧 检测到扩展干扰错误，启动处理流程');
       const config = error.config;
       if (config) {
         try {
           return await handleExtensionInterference(error, config, () => apiClient(config));
         } catch (handledError) {
           // 如果处理工具返回了自定义错误对象
+          console.error('🔄 扩展干扰处理失败:', handledError);
           return Promise.reject(handledError);
         }
       }
@@ -67,7 +92,7 @@ apiClient.interceptors.response.use(
     
     // 处理网络中断错误
     if (error.code === 'NETWORK_ERROR' || error.message === 'Network Error') {
-      console.warn('网络连接中断，尝试重新连接...');
+      console.warn('🌐 网络连接中断，尝试重新连接...');
       const config = error.config;
       if (config && (!config.__retryCount || config.__retryCount < 2)) {
         if (!config.__retryCount) config.__retryCount = 0;
@@ -81,17 +106,22 @@ apiClient.interceptors.response.use(
     }
     
     // 对其他响应错误做点什么
-    console.error('API Error:', error.response || error.message || error);
+    console.error('💥 API Error Details:', {
+      url: error.config?.url,
+      method: error.config?.method,
+      status: error.response?.status,
+      message: error.message
+    });
     
     // 根据错误类型提供更友好的错误信息
     if (error.code === 'ECONNABORTED') {
-      console.error('请求超时');
+      console.error('⏰ 请求超时');
     } else if (error.response) {
-      console.error(`HTTP错误 ${error.response.status}: ${error.response.statusText}`);
+      console.error(`📡 HTTP错误 ${error.response.status}: ${error.response.statusText}`);
     } else if (error.request) {
-      console.error('网络错误：无法连接到服务器');
+      console.error('🔌 网络错误：无法连接到服务器');
     } else {
-      console.error('请求配置错误:', error.message);
+      console.error('⚙️ 请求配置错误:', error.message);
     }
     
     return Promise.reject(error);
@@ -263,6 +293,9 @@ export const projectApi = {
   
   // 获取SSCX时间趋势统计（按月份展示近一年数据）
   getSscxTrendStatistics: () => apiClient.get('/v1/ncr/sscx-trend'),
+  
+  // 获取SSCX字段近一年统计数据（前15名）
+  getSscxYearlyStats: () => apiClient.get('/v1/ncr/sscx-yearly-stats'),
   
   // 导入项目数据
   importProjects: (formData, overwrite = false) => {

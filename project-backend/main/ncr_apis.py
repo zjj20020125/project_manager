@@ -947,3 +947,102 @@ def get_sscx_trend_statistics():
         import traceback
         traceback.print_exc()
         return []
+
+# 31. 获取SSCX字段近一年统计数据（前15名）
+@router.get("/ncr/sscx-yearly-stats", response_model=List[dict])
+def get_sscx_yearly_statistics():
+    """获取jgjncr_copy表中sscx字段近一年数据出现次数统计（前15名）"""
+    try:
+        # 检查jgjncr_copy表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'jgjncr_copy'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            print("警告: jgjncr_copy表不存在")
+            return []
+        
+        # 检查sscx字段是否存在
+        describe_sql = "DESCRIBE jgjncr_copy"
+        columns_result = execute_query(describe_sql, fetch_all=True)
+        if not columns_result:
+            print("警告: 无法获取jgjncr_copy表结构")
+            return []
+        
+        column_names = [col['Field'] for col in columns_result if 'Field' in col]
+        
+        if 'sscx' not in column_names:
+            print("警告: jgjncr_copy表缺少sscx字段")
+            return []
+        
+        # 计算一年前的日期
+        from datetime import datetime, timedelta
+        one_year_ago = datetime.now() - timedelta(days=365)
+        one_year_ago_str = one_year_ago.strftime('%Y-%m-%d')
+        
+        # 查询近一年内sscx字段的数据统计
+        # 注意：这里假设表中有时间字段，如果没有则统计全部数据
+        sscx_sql = """
+        SELECT 
+            sscx as category,
+            COUNT(*) as count
+        FROM jgjncr_copy
+        WHERE sscx IS NOT NULL 
+            AND TRIM(sscx) != ''
+            AND sscx != 'nan'
+            AND sscx != 'NULL'
+        GROUP BY sscx
+        ORDER BY count DESC
+        LIMIT 15
+        """
+        
+        # 如果表中有创建时间或更新时间字段，可以添加时间过滤
+        # 检查是否有时间字段
+        time_fields = ['create_time', 'created_at', 'update_time', 'updated_at', 'create_date', 'cjrq']
+        time_field_found = None
+        for field in time_fields:
+            if field in column_names:
+                time_field_found = field
+                break
+        
+        if time_field_found:
+            # 如果有时间字段，则添加近一年的时间过滤
+            sscx_sql = f"""
+            SELECT 
+                sscx as category,
+                COUNT(*) as count
+            FROM jgjncr_copy
+            WHERE sscx IS NOT NULL 
+                AND TRIM(sscx) != ''
+                AND sscx != 'nan'
+                AND sscx != 'NULL'
+                AND {time_field_found} >= '{one_year_ago_str}'
+            GROUP BY sscx
+            ORDER BY count DESC
+            LIMIT 15
+            """
+        
+        sscx_results = execute_query(sscx_sql, fetch_all=True) or []
+        
+        # 格式化返回数据
+        formatted_results = []
+        for result in sscx_results:
+            if result is not None and 'category' in result and 'count' in result:
+                category_name = result['category']
+                count_value = result['count']
+                
+                # 数据清理
+                if category_name and isinstance(category_name, str):
+                    category_name = category_name.strip()
+                    if category_name:  # 确保不是空字符串
+                        formatted_results.append({
+                            "name": category_name,
+                            "value": count_value
+                        })
+        
+        print(f"SSCX统计完成，返回 {len(formatted_results)} 条记录")
+        return formatted_results
+        
+    except Exception as e:
+        print(f"获取SSCX年度统计出错: {e}")
+        import traceback
+        traceback.print_exc()
+        return []

@@ -1,6 +1,9 @@
 // utils/extensionHandler.js - 浏览器扩展干扰处理工具
 import { ElMessage } from 'element-plus';
 
+// 全局错误通知标志，避免重复提示
+window.extensionErrorNotified = false;
+
 /**
  * 检测是否为浏览器扩展干扰错误
  * @param {Error} error - 错误对象
@@ -14,11 +17,14 @@ export function isExtensionInterferenceError(error) {
     'message channel closed',
     'Unchecked runtime.lastError',
     'Extension',
-    'listener'
+    'listener',
+    'chrome-extension',
+    'moz-extension'
   ];
   
+  const message = error.message.toLowerCase();
   return interferencePatterns.some(pattern => 
-    error.message.includes(pattern)
+    message.includes(pattern.toLowerCase())
   );
 }
 
@@ -65,22 +71,35 @@ export async function handleExtensionInterference(error, config, retryFunction) 
  * 显示浏览器扩展干扰错误提示
  */
 export function showExtensionError() {
+  // 避免重复提示
+  if (window.extensionErrorNotified) {
+    return;
+  }
+  
+  window.extensionErrorNotified = true;
+  
   ElMessage({
     message: `
       <div style="text-align: left;">
-        <strong>检测到浏览器扩展干扰</strong><br>
+        <strong>🚨 检测到浏览器扩展干扰</strong><br>
         请尝试以下解决方案：<br>
-        1. 禁用广告拦截器或隐私保护扩展<br>
-        2. 刷新页面重试<br>
-        3. 使用无痕/隐私模式浏览
+        1. 🔧 禁用广告拦截器或隐私保护扩展<br>
+        2. 🔄 刷新页面重试<br>
+        3. 👻 使用无痕/隐私模式浏览<br>
+        4. 🌐 更换浏览器测试
       </div>
     `,
     type: 'warning',
-    duration: 8000,
+    duration: 10000,
     showClose: true,
     dangerouslyUseHTMLString: true,
     grouping: true
   });
+  
+  // 60秒后重置通知标志
+  setTimeout(() => {
+    window.extensionErrorNotified = false;
+  }, 60000);
 }
 
 /**
