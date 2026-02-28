@@ -154,7 +154,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElContainer, ElMain, ElCard, ElDescriptions, ElDescriptionsItem, ElTag, ElButton, ElTable, ElTableColumn, ElProgress, ElPagination, ElSelect, ElOption, ElInput, ElMessage } from 'element-plus'
 import { ArrowLeft } from '@element-plus/icons-vue'
-import { projectApi } from '../api/index.js'
+import { projectApi } from '@/api/index.js'
 
 // 获取路由参数
 const route = useRoute()

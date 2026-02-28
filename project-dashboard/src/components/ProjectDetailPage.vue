@@ -52,7 +52,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { ElContainer, ElHeader, ElMain, ElCard, ElMenu, ElMenuItem, ElTable, ElTableColumn, ElTag, ElMessage } from 'element-plus'
-import { projectApi } from '../api/index.js'
+import { projectApi } from '@/api/index.js'
 
 // 接收传入的项目状态参数
 const props = defineProps({

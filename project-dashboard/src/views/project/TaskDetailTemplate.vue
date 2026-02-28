@@ -175,7 +175,7 @@
 import { ref, onMounted, defineProps, defineEmits } from 'vue'
 import { ElContainer, ElMain, ElCard, ElTable, ElTableColumn, ElTag, ElProgress, ElPagination, ElSelect, ElOption, ElInput, ElButton } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { projectApi } from '../api/index.js'
+import { projectApi } from '@/api/index.js'
 
 const router = useRouter()
 const emit = defineEmits(['data-loaded'])

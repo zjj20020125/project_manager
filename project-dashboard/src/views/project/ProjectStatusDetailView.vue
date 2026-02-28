@@ -332,7 +332,7 @@ import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElContainer, ElMain, ElCard, ElDescriptions, ElDescriptionsItem, ElTag, ElButton, ElText, ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Download } from '@element-plus/icons-vue'
-import { projectApi } from '../api/index.js'
+import { projectApi } from '@/api/index.js'
 
 // 获取路由参数
 const route = useRoute()

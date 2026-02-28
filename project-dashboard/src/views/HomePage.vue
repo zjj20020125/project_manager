@@ -110,8 +110,10 @@
                   height="260"
                   :fit="true"
                   v-loading="abnormalOwnerStatsLoading"
+                  :header-cell-style="{ textAlign: 'center', padding: '12px 0' }"
+                  :cell-style="{ textAlign: 'center', padding: '8px 0' }"
                 >
-                  <el-table-column prop="owner_name" label="负责人姓名" align="center" header-align="center" width="120">
+                  <el-table-column prop="owner_name" label="负责人姓名" width="160">
                     <template #default="scope">
                       <span
                         @click="goToOwnerTaskDetail(scope.row.owner_name)"
@@ -121,19 +123,9 @@
                       </span>
                     </template>
                   </el-table-column>
-                  <el-table-column prop="first_abnormal_count" label="首个异常节点" align="center" header-align="center" width="120">
+                  <el-table-column prop="first_abnormal_count" label="异常节点" width="140">
                     <template #default="scope">
                       <el-tag type="danger" style="text-align: center">{{ scope.row.first_abnormal_count || 0 }} 项</el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="delayed_progress_count" label="进度推迟" align="center" header-align="center" width="120">
-                    <template #default="scope">
-                      <el-tag type="warning" style="text-align: center">{{ scope.row.delayed_progress_count || 0 }} 项</el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column prop="total_count" label="总计" align="center" header-align="center" width="80">
-                    <template #default="scope">
-                      <strong>{{ scope.row.total_count || 0 }} 项</strong>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -202,8 +194,6 @@
             >
               <el-table-column type="selection" width="55" align="center" />
               <el-table-column type="index" label="序号" width="60" align="center" header-align="center" />
-              <!-- 隐藏项目编号列 -->
-              <el-table-column prop="project_id" label="项目编号" width="100" align="center" header-align="center" v-show="false" />
               <el-table-column
                 prop="project_name"
                 label="项目名称"
@@ -221,7 +211,7 @@
                 </template>
               </el-table-column>
               <el-table-column prop="project_manager" label="项目经理" width="120" align="center" header-align="center" />
-              <el-table-column prop="category" label="项目分类" width="180" align="center" header-align="center">
+              <el-table-column prop="category" label="项目分类" width="120" align="center" header-align="center">
                 <template #default="scope">
                   <div class="category-display">
                     <!-- 进度条样式 -->
@@ -248,10 +238,7 @@
               </el-table-column>
               <el-table-column prop="planned_start_date" label="计划开始时间" width="150" align="center" header-align="center" />
               <el-table-column prop="planned_end_date" label="计划结束时间" width="150" align="center" header-align="center" />
-              <el-table-column prop="actual_start_date" label="实际开始时间" width="150" align="center" header-align="center" />
-              <el-table-column prop="actual_end_date" label="实际结束时间" width="150" align="center" header-align="center" />
               <el-table-column prop="project_status" label="项目状态" width="120" align="center" header-align="center" />
-              <el-table-column prop="created_at" label="创建时间" width="180" align="center" header-align="center" />
               <el-table-column label="操作" width="120" align="center" header-align="center">
                 <template #default="scope">
                   <el-button
@@ -423,7 +410,7 @@ import { ElContainer, ElHeader, ElMain, ElRow, ElCol, ElCard, ElMenu, ElMenuItem
 import { UploadFilled } from '@element-plus/icons-vue'
 import * as XLSX from 'xlsx'
 import { useRouter } from 'vue-router'
-import { projectApi } from '../api/index.js'  // 导入API
+import { projectApi } from '@/api/index.js'  // 导入API
 import 'element-plus/dist/index.css'
 
 // 解构 ElLoading 服务

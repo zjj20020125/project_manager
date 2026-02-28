@@ -148,7 +148,7 @@
 import { ref, onMounted, watch } from 'vue'
 import { ElCard, ElTable, ElTableColumn, ElTag, ElProgress, ElPagination, ElSelect, ElOption, ElInput, ElMessage, ElMessageBox, ElDropdown, ElDropdownMenu, ElDropdownItem } from 'element-plus'
 import { useRouter, useRoute } from 'vue-router'
-import { projectApi } from '../api/index.js'
+import { projectApi } from '@/api/index.js'
 import * as XLSX from 'xlsx'
 
 const router = useRouter()

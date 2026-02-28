@@ -392,7 +392,7 @@ import { ElContainer, ElHeader, ElMain, ElRow, ElCol, ElCard, ElMenu, ElMenuItem
 import { UploadFilled } from '@element-plus/icons-vue'
 import * as XLSX from 'xlsx'
 import { useRouter } from 'vue-router'
-import { projectApi } from '../api/index.js'  // 导入API
+import { projectApi } from '@/api/index.js'  // 导入API
 import 'element-plus/dist/index.css'
 
 const router = useRouter()

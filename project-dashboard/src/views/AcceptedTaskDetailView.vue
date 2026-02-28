@@ -159,7 +159,7 @@
 import { ref, onMounted } from 'vue'
 import { ElCard, ElTable, ElTableColumn, ElTag, ElProgress, ElPagination, ElSelect, ElOption, ElInput } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { projectApi } from '../api/index.js'
+import { projectApi } from '@/api/index.js'
 
 const router = useRouter()
 

@@ -123,7 +123,7 @@ import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
 import { ElContainer, ElHeader, ElMain, ElCard, ElButton, ElTable, ElTableColumn, ElTag, ElProgress, ElDescriptions, ElDescriptionsItem, vLoading } from 'element-plus'
-import { projectApi } from '../api/index.js'
+import { projectApi } from '@/api/index.js'
 
 // 获取路由参数
 const route = useRoute()
