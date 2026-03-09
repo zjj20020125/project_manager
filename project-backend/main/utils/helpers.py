@@ -74,53 +74,96 @@ def validate_task_status(planned_start: date = None, planned_end: date = None,
                         actual_start: date = None, actual_end: date = None,
                         lag_days: float = None) -> str:
     """
-    根据条件确定任务状态
-    完成：滞后度为0，或实际时间早于等于计划时间
-    延期完成：实际时间晚于计划时间
-    异常：实际开始或完成时间为空
-    进行中：当前日期在计划期间内，且只有实际开始时间
+    根据条件确定任务状态 - 统一使用 6 种状态分类
+    
+    状态判断的核心逻辑：
+    1. 已完成的任务：实际开始和结束时间都有数据
+       - 按时完成：实际时间完全在计划时间范围内
+       - 延期完成：实际结束时间超过计划结束时间
+       - 完成：特殊情况（其他完成情况）
+    
+    2. 进行中的任务：只有实际开始时间，没有实际结束时间
+       - 进行中：当前日期在计划时间范围内
+       - 异常：当前日期超过计划结束时间
+    
+    3. 未启动的任务：实际开始和结束时间都没有数据
+       - 未开始：当前日期在计划开始时间之前
+       - 异常：当前日期在计划时间范围内或之后
     """
     current_date = datetime.now().date()
     
-    # 检查异常情况：实际开始时间或实际完成时间为空
-    if actual_start is None or actual_end is None:
-        if actual_start is None and actual_end is None:
-            return "异常"
-        elif actual_start is not None and actual_end is None:
-            # 如果仅有实际开始时间，检查是否在计划范围内
-            if planned_start and planned_end and planned_start <= current_date <= planned_end:
-                return "进行中"
-            else:
-                return "异常"
-        elif actual_start is None and actual_end is not None:
-            return "异常"
-    
-    # 如果实际开始和完成时间都存在
-    if actual_start and actual_end:
-        # 检查是否为延期完成
-        if ((planned_start and actual_start > planned_start) or 
-            (planned_end and actual_end > planned_end)):
+    # 情况 1：已完成的任务（实际开始和结束时间都有数据）
+    if actual_start is not None and actual_end is not None:
+        # 按时完成：实际时间完全在计划时间范围内
+        if (planned_start and planned_end and 
+            planned_start <= actual_start <= planned_end and 
+            planned_start <= actual_end <= planned_end):
+            return "按时完成"
+        
+        # 延期完成：实际结束时间超过计划结束时间
+        elif planned_end and actual_end > planned_end:
             return "延期完成"
-        # 检查是否为完成
-        elif ((planned_start and actual_start <= planned_start) and 
-              (planned_end and actual_end <= planned_end)):
-            return "完成"
-        # 如果在计划时间范围内完成
-        elif ((planned_start and planned_end) and 
-              (planned_start <= actual_start <= planned_end) and 
-              (planned_end and actual_end <= planned_end)):
-            return "完成"
+        
+        # 延期完成：实际开始时间和实际完成时间都晚于计划时间
+        elif (planned_start and planned_end and 
+              actual_start > planned_start and actual_end > planned_end):
+            return "延期完成"
+        
+        # 完成：其他特殊情况
         else:
-            return "延期完成"
+            return "完成"
     
-    # 检查进行中
-    if (planned_start and planned_end and 
-        planned_start <= current_date <= planned_end and 
-        actual_start is not None and actual_end is None):
-        return "进行中"
+    # 情况 2：进行中的任务（只有实际开始时间，没有实际结束时间）
+    elif actual_start is not None and actual_end is None:
+        # 如果既有实际开始时间又有计划时间
+        if planned_start and planned_end:
+            # 如果实际开始时间在计划时间范围内
+            if planned_start <= actual_start <= planned_end:
+                # 再检查当前日期是否已经超过计划结束时间
+                if current_date > planned_end:
+                    return "异常"  # 超期进行中，标记为异常
+                else:
+                    return "进行中"
+            
+            # 如果实际开始时间早于计划开始时间
+            elif actual_start < planned_start:
+                # 检查当前日期是否已经超过计划结束时间
+                if current_date > planned_end:
+                    return "异常"
+                else:
+                    return "进行中"
+            
+            # 如果实际开始时间晚于计划结束时间
+            elif actual_start > planned_end:
+                return "异常"
+        
+        # 如果没有计划时间，但有实际开始时间，则认为是进行中
+        elif actual_start:
+            return "进行中"
+        
+        # 默认情况
+        else:
+            return "进行中"
     
-    # 默认为异常
-    return "异常"
+    # 情况 3：未启动的任务（实际开始和结束时间都没有数据）
+    elif actual_start is None and actual_end is None:
+        # 未开始：当前日期在计划开始时间之前
+        if planned_start and current_date < planned_start:
+            return "未开始"
+        
+        # 异常：当前日期在计划时间范围内（应该已开始但没开始）
+        # 或当前日期超过计划结束时间（严重滞后）
+        elif planned_start and planned_end:
+            if planned_start <= current_date <= planned_end or current_date > planned_end:
+                return "异常"
+        
+        # 默认情况
+        else:
+            return "未开始"
+    
+    # 其他异常情况
+    else:
+        return "异常"
 
 def extract_column_names(columns_result: List[Dict]) -> List[str]:
     """从数据库列描述结果中提取列名"""

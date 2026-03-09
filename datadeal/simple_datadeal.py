@@ -102,18 +102,23 @@ def determine_task_status(planned_start, planned_end, actual_start, actual_end, 
     """
     current_date = datetime.now().date()
     
-    # 情况1：已完成的任务（实际开始和结束时间都有数据）
+    # 情况 1：已完成的任务（实际开始和结束时间都有数据）
     if actual_start is not None and actual_end is not None:
         # 按时完成：实际时间完全在计划时间范围内
         if (planned_start and planned_end and 
             planned_start <= actual_start <= planned_end and 
             planned_start <= actual_end <= planned_end):
             return "按时完成"
-        
+            
         # 延期完成：实际结束时间超过计划结束时间
         elif planned_end and actual_end > planned_end:
             return "延期完成"
-        
+            
+        # 延期完成：实际开始时间和实际完成时间都晚于计划时间
+        elif (planned_start and planned_end and 
+              actual_start > planned_start and actual_end > planned_end):
+            return "延期完成"
+            
         # 完成：其他特殊情况
         else:
             return "完成"
@@ -604,56 +609,37 @@ def analyze_excel_data(data_list):
     latest_planned_end = max(filtered_planned_ends) if filtered_planned_ends else None
     earliest_actual_start = min(filtered_actual_starts) if filtered_actual_starts else None
     
-    # 修改：项目实际结束时间取最后一个子任务的实际完成时间，即使是空值也要取
-    # 按照数据在Excel中的顺序，严格取最后一行最后一个实际结束时间字段的值
+    # 修改：项目实际结束时间严格取最后一个子任务的实际完成时间
+    # 如果最后一个子任务的实际完成时间为空，则认定为空，不再向前查找其他任务
     latest_actual_end = None
     if data_list:
-        # 直接取最后一行数据
+        # 直接取最后一行数据（按照 WBS 顺序，最后一个子任务代表项目的最终交付物）
         last_row = data_list[-1]
-        last_actual_end_value = None
-        
+            
         # 遍历最后一行的所有列，找出所有实际结束时间相关的字段
         actual_end_fields = []
         for col_name, col_value in last_row.items():
             col_name_clean = col_name.strip().replace('\u3000', '').replace(' ', '')
             col_name_lower = col_name_clean.lower()
-            
+                
             # 检查是否为实际结束时间列
             if any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower 
                    for keyword in [c.replace('\u3000', '').replace(' ', '') for c in actual_end_cols]):
                 actual_end_fields.append((col_name, col_value))
-                last_actual_end_value = col_value  # 记录最后一个匹配的字段值
-        
-        # 如果找到了实际结束时间字段，取最后一个字段的值（包括None）
+            
+        # 如果找到了实际结束时间字段，取最后一个字段的值（包括 None）
         if actual_end_fields:
             # 取最后一个实际结束时间字段的值
             last_field_name, last_field_value = actual_end_fields[-1]
             latest_actual_end = extract_date_from_cell(last_field_value)
-        else:
-            # 如果最后一行没有实际结束时间字段，在整个数据中查找
-            # 从后往前查找，找到最后一个有实际结束时间的记录
-            for row in reversed(data_list):
-                row_actual_ends = []
-                for col_name, col_value in row.items():
-                    col_name_clean = col_name.strip().replace('\u3000', '').replace(' ', '')
-                    col_name_lower = col_name_clean.lower()
-                    
-                    if any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower 
-                           for keyword in [c.replace('\u3000', '').replace(' ', '') for c in actual_end_cols]):
-                        date_val = extract_date_from_cell(col_value)
-                        row_actual_ends.append((col_name, col_value, date_val))
-                
-                # 如果这一行有实际结束时间字段，取最后一个
-                if row_actual_ends:
-                    last_col_name, last_col_value, last_date_val = row_actual_ends[-1]
-                    latest_actual_end = last_date_val
-                    break
+            # 注意：即使提取结果为 None，也保持为 None，不再查找其他行或其他字段
+        # 如果最后一行没有任何实际结束时间字段，则 latest_actual_end 保持为 None
     
     # 根据新的状态判断逻辑确定项目状态
     current_date = datetime.now().date()
     
-    # 情况1：已完成的任务（实际开始和结束时间都有数据）
-    if latest_actual_end and latest_actual_end < current_date:
+    # 情况 1：已完成的任务（实际开始和结束时间都有数据）
+    if latest_actual_end and latest_actual_end <= current_date:
         # 检查是否延期完成
         if latest_planned_end and latest_actual_end > latest_planned_end:
             status = "延期完成"
