@@ -1,3 +1,5 @@
+
+
 <template>
   <el-container style="min-height: 100vh; padding-top: 100px;">
     <!-- 项目总览标题栏 -->
@@ -61,7 +63,7 @@
                   shadow="hover" 
                   @click="goToProjectDetail('ongoing')" 
                   class="clickable-card stats-card"
-                  style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);"
+                  style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);"
                 >
                   <div class="card-title" style="color: white;">进行中项目</div>
                   <div class="card-value" style="color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">{{ projectCategoryStats.ongoing_projects || 0 }}个</div>
@@ -178,14 +180,22 @@
             <div slot="header" class="card-header">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span style="font-size: 18px; flex: 1; text-align: center;">项目进度明细表</span>
-                <div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                  <el-input
+                    v-model="searchKeyword"
+                    placeholder="搜索项目名称/经理/分类"
+                    prefix-icon="Search"
+                    clearable
+                    style="width: 250px;"
+                    @input="handleSearch"
+                  />
                   <el-button type="primary" size="small" @click="showExportDialog">导出</el-button>
                   <el-button type="success" size="small" @click="showImportDialog">导入</el-button>
                 </div>
               </div>
             </div>
             <el-table
-              :data="projectDetails"
+              :data="filteredProjectDetails"
               border
               style="width: 100%"
               v-loading="projectDetailsLoading"
@@ -238,7 +248,13 @@
               </el-table-column>
               <el-table-column prop="planned_start_date" label="计划开始时间" width="150" align="center" header-align="center" />
               <el-table-column prop="planned_end_date" label="计划结束时间" width="150" align="center" header-align="center" />
-              <el-table-column prop="project_status" label="项目状态" width="120" align="center" header-align="center" />
+              <el-table-column prop="project_status" label="项目状态" width="120" align="center" header-align="center">
+                <template #default="scope">
+                  <div class="status-progress-bar" :style="getProjectStatusProgressBarStyle(scope.row.project_status)">
+                    {{ scope.row.project_status }}
+                  </div>
+                </template>
+              </el-table-column>
               <el-table-column label="操作" width="120" align="center" header-align="center">
                 <template #default="scope">
                   <el-button
@@ -404,10 +420,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, reactive } from 'vue'
+import { ref, onMounted, onUnmounted, reactive, computed } from 'vue'
 import * as echarts from 'echarts'
 import { ElContainer, ElHeader, ElMain, ElRow, ElCol, ElCard, ElMenu, ElMenuItem, ElTable, ElTableColumn, ElTag, ElProgress, ElMessage, ElLoading, ElMessageBox, vLoading, ElButton, ElDialog, ElRadio, ElRadioGroup, ElAlert, ElUpload } from 'element-plus'
-import { UploadFilled } from '@element-plus/icons-vue'
+import { UploadFilled, Search } from '@element-plus/icons-vue'
 import * as XLSX from 'xlsx'
 import { useRouter } from 'vue-router'
 import { projectApi } from '@/api/index.js'  // 导入API
@@ -500,6 +516,7 @@ const taskStats = reactive({
 // 项目详细数据状态
 const projectDetails = ref([])
 const projectDetailsLoading = ref(false)
+const searchKeyword = ref('') // 搜索关键词
 const projectCategoryStats = ref({
   total_projects: 0,
   not_started_projects: 0,
@@ -532,6 +549,13 @@ const uploadLoading = ref(false) // 导入加载状态
 const deleteDialogVisible = ref(false)
 const deleteLoading = ref(false)
 const projectToDelete = ref(null) // 单个删除的项目
+
+// 编辑项目相关
+const editProjectDialogVisible = ref(false)
+const projectEditForm = ref({
+  project_name: '',
+  project_manager: ''
+})
 
 // 修改项目相关状态
 const modifyDialogVisible = ref(false)
@@ -575,6 +599,31 @@ let typePieChart = null
 let sourceBarChart = null
 let loadBarChart = null
 let ganttChart = null
+
+// 计算属性：过滤后的项目列表
+const filteredProjectDetails = computed(() => {
+  if (!searchKeyword.value || searchKeyword.value.trim() === '') {
+    return projectDetails.value
+  }
+  
+  const keyword = searchKeyword.value.toLowerCase().trim()
+  return projectDetails.value.filter(item => {
+    // 搜索项目名称、项目经理、项目分类
+    const projectName = (item.project_name || '').toLowerCase()
+    const projectManager = (item.project_manager || '').toLowerCase()
+    const category = (item.category || '').toLowerCase()
+    
+    return projectName.includes(keyword) || 
+           projectManager.includes(keyword) || 
+           category.includes(keyword)
+  })
+})
+
+// 搜索处理函数
+const handleSearch = () => {
+  // 搜索时清空选择的项目
+  multipleSelection.value = []
+}
 
 // 获取统计数据
 const fetchStats = async () => {
@@ -701,6 +750,69 @@ const getCategoryClass = (category) => {
   }
 }
 
+// 获取项目状态进度条样式
+const getProjectStatusProgressBarStyle = (status) => {
+  const baseStyle = {
+    padding: '4px 8px',
+    borderRadius: '4px',
+    textAlign: 'center',
+    fontWeight: 'bold',
+    fontSize: '12px',
+    color: 'white'
+  }
+  
+  switch (status) {
+    case '未开始':
+      return {
+        ...baseStyle,
+        backgroundColor: '#909399',
+        boxShadow: '0 2px 4px rgba(144, 147, 153, 0.3)'
+      }
+    case '进行中':
+      return {
+        ...baseStyle,
+        backgroundColor: '#409EFF',
+        boxShadow: '0 2px 4px rgba(64, 158, 255, 0.3)'
+      }
+    case '进行中（延期）':
+      return {
+        ...baseStyle,
+        backgroundColor: '#F56C6C',
+        boxShadow: '0 2px 4px rgba(245, 108, 108, 0.3)'
+      }
+    case '已完成':
+      return {
+        ...baseStyle,
+        backgroundColor: '#67C23A',
+        boxShadow: '0 2px 4px rgba(103, 194, 58, 0.3)'
+      }
+    case '已完成（延期完成）':
+      return {
+        ...baseStyle,
+        backgroundColor: '#E6A23C',
+        boxShadow: '0 2px 4px rgba(230, 162, 60, 0.3)'
+      }
+    case '已验收':
+      return {
+        ...baseStyle,
+        backgroundColor: '#E6A23C',
+        boxShadow: '0 2px 4px rgba(230, 162, 60, 0.3)'
+      }
+    case '异常':
+      return {
+        ...baseStyle,
+        backgroundColor: '#F56C6C',
+        boxShadow: '0 2px 4px rgba(245, 108, 108, 0.3)'
+      }
+    default:
+      return {
+        ...baseStyle,
+        backgroundColor: '#909399',
+        boxShadow: '0 2px 4px rgba(144, 147, 153, 0.3)'
+      }
+  }
+}
+
 // 获取项目分类进度条样式
 const getCategoryProgressStyle = (category) => {
   const baseStyle = {
@@ -731,6 +843,7 @@ const getCategoryProgressStyle = (category) => {
         boxShadow: '0 2px 8px rgba(9, 132, 227, 0.3)'
       }
     case '已结项':
+    case '完成':
       return {
         ...baseStyle,
         background: 'linear-gradient(90deg, #55EFC4 0%, #00B894 100%)',
@@ -1396,6 +1509,21 @@ const resizeCharts = () => {
   ganttChart?.resize()
 }
 
+// 刷新所有项目状态（根据最新任务数据重新计算）
+const refreshAllProjectsStatus = async () => {
+  try {
+    console.log('开始刷新所有项目状态...');
+    const response = await projectApi.refreshProjectsStatus();
+    if (response.success) {
+      console.log(`✅ 项目状态刷新成功：${response.message}`);
+      // ElMessage.info(response.message || '项目状态已自动更新');
+    }
+  } catch (error) {
+    console.error('刷新项目状态失败:', error);
+    // 不显示错误提示，避免影响用户体验
+  }
+}
+
 // 挂载时初始化图表
 onMounted(async () => {
   // 更新当前时间
@@ -1403,7 +1531,27 @@ onMounted(async () => {
   // 每秒更新一次时间
   setInterval(updateTime, 1000);
 
+  // 添加全局错误监听，捕获浏览器扩展干扰
+  const handleExtensionError = (error) => {
+    if (error.message && error.message.includes('runtime.lastError')) {
+      console.warn('⚠️ 检测到浏览器扩展干扰，已忽略:', error.message);
+      // 阻止错误传播，不影响应用正常运行
+      error.stopImmediatePropagation?.();
+    }
+  };
+  
+  window.addEventListener('error', handleExtensionError, true);
+  window.addEventListener('unhandledrejection', (event) => {
+    if (event.reason && event.reason.message && event.reason.message.includes('runtime.lastError')) {
+      console.warn('⚠️ 检测到浏览器扩展Promise错误，已忽略:', event.reason.message);
+      event.preventDefault(); // 阻止错误显示在控制台
+    }
+  });
+
   try {
+    // 先刷新项目状态（根据最新任务数据重新计算）
+    await refreshAllProjectsStatus();
+    
     // 并行获取所有数据
     await Promise.all([
       fetchStats(),
@@ -1413,7 +1561,7 @@ onMounted(async () => {
       initAbnormalTaskOwnerStats()  // 添加异常节点负责人统计初始化
     ]);
 
-    // 使用setTimeout确保DOM完全渲染后再初始化图表
+    // 使用 setTimeout 确保 DOM 完全渲染后再初始化图表
     setTimeout(() => {
       initTypePie();
       initSourceBar();
@@ -1431,6 +1579,16 @@ onMounted(async () => {
 // 卸载时销毁图表
 onUnmounted(() => {
   window.removeEventListener('resize', resizeCharts)
+  
+  // 清理浏览器扩展错误监听器
+  const handleExtensionError = (error) => {
+    if (error.message && error.message.includes('runtime.lastError')) {
+      console.warn('⚠️ 检测到浏览器扩展干扰，已忽略:', error.message);
+      error.stopImmediatePropagation?.();
+    }
+  };
+  window.removeEventListener('error', handleExtensionError, true);
+  
   if (typePieChart) {
     typePieChart.dispose()
     typePieChart = null

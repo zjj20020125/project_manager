@@ -21,7 +21,17 @@
       <div style="max-width: 1200px; width: 100%;">
         <!-- 项目信息卡片 -->
         <el-card shadow="hover" style="margin-bottom: 20px;" v-if="projectInfo && Object.keys(projectInfo).length > 0">
-          <div slot="header" class="card-header">项目基本信息</div>
+          <div slot="header" class="card-header">
+            <span>项目基本信息</span>
+            <el-button 
+              type="primary" 
+              size="small" 
+              @click="handleEditProject"
+              style="float: right;"
+            >
+              修改项目信息
+            </el-button>
+          </div>
           <el-descriptions :column="3" border v-if="projectInfo && Object.keys(projectInfo).length > 0">
             <el-descriptions-item label="项目编号">{{ projectInfo.project_id || 'N/A' }}</el-descriptions-item>
             <el-descriptions-item label="项目经理">{{ projectInfo.project_manager || '未指定' }}</el-descriptions-item>
@@ -57,7 +67,7 @@
             style="width: 100%" 
             v-loading="loading"
             v-if="subtasksData && subtasksData.length > 0"
-            fit="true"
+            fit
             :header-cell-style="{ textAlign: 'center', background: '#f5f7fa' }"
             :cell-style="{ textAlign: 'center', verticalAlign: 'middle' }"
           >
@@ -103,9 +113,21 @@
             </el-table-column>
             <el-table-column prop="task_status" label="任务状态" width="120" align="center" header-align="center">
               <template #default="scope">
-                <el-tag :type="getTaskStatusTagType(scope.row.task_status)">
-                  {{ scope.row.task_status || scope.row.status || '未设定' }}
+                <!-- 使用动态计算的状态，而不是数据库的状态 -->
+                <el-tag :type="getTaskStatusTagType(calculateTaskStatus(scope.row))">
+                  {{ calculateTaskStatus(scope.row) }}
                 </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="120" align="center" header-align="center" fixed="right">
+              <template #default="scope">
+                <el-button
+                  type="primary"
+                  size="small"
+                  @click="handleEdit(scope.row)"
+                >
+                  修改
+                </el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -115,6 +137,220 @@
         </el-card>
       </div>
     </el-main>
+
+    <!-- 编辑任务对话框 -->
+    <el-dialog 
+      v-model="editDialogVisible" 
+      title="修改任务信息" 
+      width="600px"
+      :close-on-click-modal="false"
+      @close="handleDialogClose"
+    >
+      <el-form 
+        ref="editFormRef" 
+        :model="editForm" 
+        label-width="120px"
+        :rules="{
+          task_name: [{ required: true, message: '请输入任务名称', trigger: 'blur' }],
+          task_owner: [{ required: true, message: '请输入任务负责人', trigger: 'blur' }]
+        }"
+      >
+        <el-form-item label="任务 ID">
+          <el-input v-model="editForm.task_id" disabled></el-input>
+        </el-form-item>
+        
+        <el-form-item label="任务名称" required>
+          <el-input v-model="editForm.task_name" placeholder="请输入任务名称"></el-input>
+        </el-form-item>
+        
+        <el-form-item label="WBS 编码">
+          <el-input v-model="editForm.wbs_code" placeholder="请输入 WBS 编码"></el-input>
+        </el-form-item>
+        
+        <el-form-item label="任务负责人" required>
+          <el-input v-model="editForm.task_owner" placeholder="请输入任务负责人"></el-input>
+        </el-form-item>
+        
+        <el-form-item label="计划开始时间">
+          <el-date-picker
+            v-model="editForm.planned_start_date"
+            type="date"
+            placeholder="选择计划开始时间"
+            value-format="YYYY-MM-DD"
+            style="width: 100%;"
+          ></el-date-picker>
+        </el-form-item>
+        
+        <el-form-item label="计划结束时间">
+          <el-date-picker
+            v-model="editForm.planned_end_date"
+            type="date"
+            placeholder="选择计划结束时间"
+            value-format="YYYY-MM-DD"
+            style="width: 100%;"
+          ></el-date-picker>
+        </el-form-item>
+        
+        <el-form-item label="实际开始时间">
+          <el-date-picker
+            v-model="editForm.actual_start_date"
+            type="date"
+            placeholder="选择实际开始时间"
+            value-format="YYYY-MM-DD"
+            style="width: 100%;"
+          ></el-date-picker>
+        </el-form-item>
+        
+        <el-form-item label="实际结束时间">
+          <el-date-picker
+            v-model="editForm.actual_end_date"
+            type="date"
+            placeholder="选择实际结束时间"
+            value-format="YYYY-MM-DD"
+            style="width: 100%;"
+          ></el-date-picker>
+        </el-form-item>
+        
+        <el-form-item label="任务进度 (%)">
+          <el-input-number 
+            v-model="editForm.progress" 
+            :min="0" 
+            :max="100" 
+            :step="5"
+            style="width: 100%;"
+          ></el-input-number>
+        </el-form-item>
+        
+        <el-form-item label="任务状态">
+          <el-select v-model="editForm.task_status" placeholder="请选择任务状态" style="width: 100%;">
+            <el-option label="未开始" value="未开始"></el-option>
+            <el-option label="进行中" value="进行中"></el-option>
+            <el-option label="已完成" value="已完成"></el-option>
+            <el-option label="已验收" value="已验收"></el-option>
+            <el-option label="异常" value="异常"></el-option>
+          </el-select>
+        </el-form-item>
+        
+        <el-form-item label="修改说明">
+          <el-input 
+            v-model="editForm.remarks_for_modification" 
+            type="textarea" 
+            :rows="3"
+            placeholder="请输入修改说明（选填）"
+          ></el-input>
+        </el-form-item>
+      </el-form>
+      
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="editDialogVisible = false">取消</el-button>
+          <el-button 
+            type="primary" 
+            @click="confirmEdit" 
+            :loading="editLoading"
+          >
+            确认修改
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑项目信息对话框 -->
+    <el-dialog 
+      v-model="editProjectDialogVisible" 
+      title="修改项目信息" 
+      width="600px"
+      :close-on-click-modal="false"
+      @close="handleEditProjectDialogClose"
+    >
+      <el-form 
+        ref="editProjectFormRef" 
+        :model="editProjectForm" 
+        label-width="120px"
+      >
+        <el-form-item label="项目编号">
+          <el-input v-model="editProjectForm.project_id" disabled></el-input>
+        </el-form-item>
+        
+        <el-form-item label="项目名称" required>
+          <el-input v-model="editProjectForm.project_name" placeholder="请输入项目名称"></el-input>
+        </el-form-item>
+        
+        <el-form-item label="项目经理">
+          <el-input v-model="editProjectForm.project_manager" placeholder="请输入项目经理姓名"></el-input>
+        </el-form-item>
+        
+        <el-form-item label="计划开始时间">
+          <el-date-picker
+            v-model="editProjectForm.planned_start_date"
+            type="date"
+            placeholder="选择计划开始时间"
+            value-format="YYYY-MM-DD"
+            style="width: 100%;"
+          ></el-date-picker>
+        </el-form-item>
+        
+        <el-form-item label="计划结束时间">
+          <el-date-picker
+            v-model="editProjectForm.planned_end_date"
+            type="date"
+            placeholder="选择计划结束时间"
+            value-format="YYYY-MM-DD"
+            style="width: 100%;"
+          ></el-date-picker>
+        </el-form-item>
+        
+        <el-form-item label="实际开始时间">
+          <el-date-picker
+            v-model="editProjectForm.actual_start_date"
+            type="date"
+            placeholder="选择实际开始时间"
+            value-format="YYYY-MM-DD"
+            style="width: 100%;"
+          ></el-date-picker>
+        </el-form-item>
+        
+        <el-form-item label="实际结束时间">
+          <el-date-picker
+            v-model="editProjectForm.actual_end_date"
+            type="date"
+            placeholder="选择实际结束时间"
+            value-format="YYYY-MM-DD"
+            style="width: 100%;"
+          ></el-date-picker>
+        </el-form-item>
+        
+        <el-form-item label="项目分类">
+          <el-select v-model="editProjectForm.category" placeholder="请选择项目分类" style="width: 100%;">
+            <el-option label="未开始" value="未开始"></el-option>
+            <el-option label="进行中" value="进行中"></el-option>
+            <el-option label="已结项" value="已结项"></el-option>
+          </el-select>
+        </el-form-item>
+        
+        <el-form-item label="修改说明">
+          <el-input 
+            v-model="editProjectForm.remarks_for_modification" 
+            type="textarea" 
+            :rows="3"
+            placeholder="请输入修改说明（选填）"
+          ></el-input>
+        </el-form-item>
+      </el-form>
+      
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="editProjectDialogVisible = false">取消</el-button>
+          <el-button 
+            type="primary" 
+            @click="confirmEditProject" 
+            :loading="editProjectLoading"
+          >
+            确认修改
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </el-container>
 </template>
 
@@ -122,7 +358,7 @@
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts'
-import { ElContainer, ElHeader, ElMain, ElCard, ElButton, ElTable, ElTableColumn, ElTag, ElProgress, ElDescriptions, ElDescriptionsItem, vLoading } from 'element-plus'
+import { ElContainer, ElHeader, ElMain, ElCard, ElButton, ElTable, ElTableColumn, ElTag, ElProgress, ElDescriptions, ElDescriptionsItem, vLoading, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElSelect, ElOption, ElDatePicker, ElMessage, ElMessageBox } from 'element-plus'
 import { projectApi } from '@/api/index.js'
 
 // 获取路由参数
@@ -136,6 +372,39 @@ const currentTime = ref('')
 const loading = ref(false)
 const subtasksData = ref([])
 const projectInfo = ref({})
+
+// 编辑对话框相关
+const editDialogVisible = ref(false)
+const editFormRef = ref(null)
+const editForm = ref({
+  task_id: '',
+  task_name: '',
+  wbs_code: '',
+  task_owner: '',
+  planned_start_date: '',
+  planned_end_date: '',
+  actual_start_date: '',
+  actual_end_date: '',
+  progress: 0,
+  task_status: ''
+})
+const editLoading = ref(false)
+
+// 编辑项目对话框相关
+const editProjectDialogVisible = ref(false)
+const editProjectFormRef = ref(null)
+const editProjectForm = ref({
+  project_id: '',
+  project_name: '',
+  project_manager: '',
+  planned_start_date: '',
+  planned_end_date: '',
+  actual_start_date: '',
+  actual_end_date: '',
+  category: '',
+  remarks_for_modification: ''
+})
+const editProjectLoading = ref(false)
 
 // ECharts实例
 let ganttChart = null
@@ -173,6 +442,245 @@ const updateTime = () => {
 // 返回上一页
 const goBack = () => {
   router.go(-1)  // 返回上一页
+}
+
+// 处理编辑
+const handleEdit = (row) => {
+  console.log('编辑任务:', row)
+  
+  // 填充表单数据
+  editForm.value = {
+    task_id: row.task_id || '',
+    task_name: row.task_name || row.taskName || '',
+    wbs_code: row.wbs_code || row.wbsNo || '',
+    task_owner: row.task_owner || row.owner || '',
+    planned_start_date: row.planned_start_date || row.planStart || '',
+    planned_end_date: row.planned_end_date || row.planEnd || '',
+    actual_start_date: row.actual_start_date || row.actualStart || '',
+    actual_end_date: row.actual_end_date || row.actualEnd || '',
+    progress: parseFloat(row.progress?.toString().replace('%','') || 0),
+    task_status: row.task_status || row.status || ''
+  }
+  
+  editDialogVisible.value = true
+}
+
+// 确认修改
+const confirmEdit = async () => {
+  if (!editFormRef.value) {
+    console.error('❌ 表单引用不存在')
+    ElMessage.error('表单初始化失败，请刷新页面')
+    return
+  }
+  
+  try {
+    // 先进行表单验证
+    await editFormRef.value.validate()
+    console.log('✅ 表单验证通过')
+    
+    editLoading.value = true
+    
+    // 检查 task_id 是否存在
+    if (!editForm.value.task_id) {
+      console.error('❌ 任务 ID 为空', editForm.value)
+      ElMessage.error('任务 ID 丢失，请重新打开编辑对话框')
+      editLoading.value = false
+      return
+    }
+    
+    // 准备修改数据 - 确保日期格式正确
+    const modifyData = {
+      task_name: editForm.value.task_name,
+      wbs_code: editForm.value.wbs_code,
+      task_owner: editForm.value.task_owner,
+      planned_start_date: editForm.value.planned_start_date || null,
+      planned_end_date: editForm.value.planned_end_date || null,
+      actual_start_date: editForm.value.actual_start_date || null,
+      actual_end_date: editForm.value.actual_end_date || null,
+      progress: Number(editForm.value.progress) || 0,
+      task_status: editForm.value.task_status || '未开始',
+      modifier_name: '当前用户', // TODO: 从用户会话中获取实际用户名
+      remarks_for_modification: editForm.value.remarks_for_modification || '修改任务信息'
+    }
+    
+    console.log('📝 提交修改数据:', JSON.stringify(modifyData, null, 2))
+    console.log('🆔 任务 ID:', editForm.value.task_id)
+    
+    // 调用后端 API 更新任务数据
+    const response = await projectApi.updateTask(editForm.value.task_id, modifyData)
+    
+    console.log('✅ API 响应:', response)
+    
+    if (response.success) {
+      ElMessage.success('任务修改成功')
+      editDialogVisible.value = false
+      
+      // 重新加载子任务数据和项目信息
+      await fetchSubtasksData()
+      
+      // 显示提示消息，说明项目状态已自动更新
+      ElMessage.info('项目状态已根据最新数据自动更新')
+    } else {
+      console.error('❌ 修改失败，服务器返回 success=false', response)
+      throw new Error(response.message || '修改失败')
+    }
+    
+  } catch (error) {
+    console.error('❌ 修改任务失败:', error)
+    console.error('错误堆栈:', error.stack)
+    
+    // 过滤掉正常的验证取消错误
+    if (error.message !== 'validate' && !error.toString().includes('validate')) {
+      let errorMsg = '修改任务失败'
+      
+      if (error.response) {
+        // 服务器返回了错误响应
+        console.error('📡 HTTP 错误响应:', error.response.status, error.response.data)
+        errorMsg = error.response.data?.detail || error.response.data?.message || errorMsg
+      } else if (error.message) {
+        errorMsg = error.message
+      }
+      
+      ElMessage.error(errorMsg)
+    } else {
+      console.log('ℹ️ 表单验证未通过，已取消提交')
+    }
+  } finally {
+    editLoading.value = false
+  }
+}
+
+// 处理对话框关闭
+const handleDialogClose = () => {
+  if (editFormRef.value) {
+    editFormRef.value.resetFields()
+  }
+}
+
+// 处理编辑项目
+const handleEditProject = () => {
+  console.log('=== 开始编辑项目 ===')
+  console.log('当前 projectInfo:', projectInfo.value)
+  console.log('projectInfo 是否为空:', !projectInfo.value || Object.keys(projectInfo.value).length === 0)
+  
+  if (!projectInfo.value || Object.keys(projectInfo.value).length === 0) {
+    ElMessage.warning('项目信息尚未加载，请稍后再试')
+    return
+  }
+  
+  // 填充表单数据
+  editProjectForm.value = {
+    project_id: projectInfo.value.project_id || '',
+    project_name: projectInfo.value.project_name || '',
+    project_manager: projectInfo.value.project_manager || '',
+    planned_start_date: projectInfo.value.planned_start_date || '',
+    planned_end_date: projectInfo.value.planned_end_date || '',
+    actual_start_date: projectInfo.value.actual_start_date || '',
+    actual_end_date: projectInfo.value.actual_end_date || '',
+    category: projectInfo.value.category || '',
+    remarks_for_modification: ''
+  }
+  
+  console.log('填充后的表单数据:', editProjectForm.value)
+  editProjectDialogVisible.value = true
+}
+
+// 确认修改项目
+const confirmEditProject = async () => {
+  if (!editProjectFormRef.value) {
+    console.error('❌ 项目表单引用不存在')
+    ElMessage.error('表单初始化失败，请刷新页面')
+    return
+  }
+  
+  try {
+    // 先进行表单验证
+    await editProjectFormRef.value.validate()
+    console.log('✅ 项目表单验证通过')
+    
+    editProjectLoading.value = true
+    
+    // 检查 project_id 是否存在
+    if (!editProjectForm.value.project_id) {
+      console.error('❌ 项目ID 为空', editProjectForm.value)
+      ElMessage.error('项目ID 丢失，请重新打开编辑对话框')
+      editProjectLoading.value = false
+      return
+    }
+    
+    // 准备修改数据 - 确保日期格式正确
+    const modifyData = {
+      project_name: editProjectForm.value.project_name,
+      project_manager: editProjectForm.value.project_manager || null,
+      planned_start_date: editProjectForm.value.planned_start_date || null,
+      planned_end_date: editProjectForm.value.planned_end_date || null,
+      actual_start_date: editProjectForm.value.actual_start_date || null,
+      actual_end_date: editProjectForm.value.actual_end_date || null,
+      category: editProjectForm.value.category || null,
+      modifier_name: '当前用户', // TODO: 从用户会话中获取实际用户名
+      remarks_for_modification: editProjectForm.value.remarks_for_modification || '修改项目信息'
+    }
+    
+    console.log('📝 提交修改数据:', JSON.stringify(modifyData, null, 2))
+    console.log('🆔 项目ID:', editProjectForm.value.project_id)
+    
+    // 调用后端 API 更新项目数据
+    const response = await projectApi.updateProject(editProjectForm.value.project_id, modifyData)
+    
+    console.log('✅ API 响应:', response)
+    
+    if (response.success || response.message) {
+      ElMessage.success('项目信息修改成功')
+      editProjectDialogVisible.value = false
+      
+      // 重新加载项目信息和子任务数据
+      await fetchSubtasksData()
+      
+      // 显示提示消息
+      ElMessage.info('项目状态已根据最新数据自动更新')
+    } else {
+      console.error('❌ 修改失败，服务器返回 success=false', response)
+      throw new Error(response.message || '修改失败')
+    }
+    
+  } catch (error) {
+    console.error('❌ 修改项目失败:', error)
+    console.error('错误堆栈:', error.stack)
+    
+    // 过滤掉正常的验证取消错误
+    if (error.message !== 'validate' && !error.toString().includes('validate')) {
+      let errorMsg = '修改项目失败'
+      
+      if (error.response) {
+        // 服务器返回了错误响应
+        console.error('📡 HTTP 错误响应:', error.response.status, error.response.data)
+        
+        // 特殊处理：如果没有提供有效字段，给出更友好的提示
+        if (error.response.data?.detail?.includes('没有提供有效的更新字段')) {
+          errorMsg = '未检测到任何修改，请至少修改一个字段后再保存'
+        } else if (error.response.data?.detail?.includes('项目更新失败')) {
+          errorMsg = '项目数据未发生变化，请修改其他字段或检查是否与原数据完全一致'
+        } else {
+          errorMsg = error.response.data?.detail || errorMsg
+        }
+      } else if (error.message) {
+        errorMsg = error.message
+      }
+      
+      ElMessage.error(errorMsg)
+    } else {
+      console.log('ℹ️ 表单验证未通过，已取消提交')
+    }
+  } finally {
+    editProjectLoading.value = false
+  }
+}
+
+// 处理编辑项目对话框关闭
+const handleEditProjectDialogClose = () => {
+  if (editProjectFormRef.value) {
+    editProjectFormRef.value.resetFields()
+  }
 }
 
 // 获取项目子任务数据
@@ -452,6 +960,88 @@ const initGanttChart = async () => {
   }
 }
 
+// 动态计算任务状态
+const calculateTaskStatus = (task) => {
+  const now = new Date()
+  const currentDate = now.toISOString().split('T')[0] // 格式：YYYY-MM-DD
+  
+  const plannedStart = task.planned_start_date || task.planStart
+  const plannedEnd = task.planned_end_date || task.planEnd
+  const actualStart = task.actual_start_date || task.actualStart
+  const actualEnd = task.actual_end_date || task.actualEnd
+  
+  // 情况 1: 已完成的任务 (有实际开始和结束时间)
+  if (actualStart && actualEnd) {
+    if (plannedStart && plannedEnd) {
+      // 检查是否按时完成
+      if (actualStart >= plannedStart && actualStart <= plannedEnd &&
+          actualEnd >= plannedStart && actualEnd <= plannedEnd) {
+        return '按时完成'
+      } else if (actualEnd > plannedEnd) {
+        return '延期完成'
+      } else {
+        return '完成'
+      }
+    } else {
+      return '已完成'
+    }
+  }
+  
+  // 情况 2: 进行中的任务 (有实际开始时间，没有实际结束时间)
+  if (actualStart && !actualEnd) {
+    if (plannedStart && plannedEnd) {
+      // 实际开始在计划范围内
+      if (actualStart >= plannedStart && actualStart <= plannedEnd) {
+        // 检查当前日期是否超过计划结束时间
+        if (currentDate > plannedEnd) {
+          return '异常' // 超期进行中
+        } else {
+          return '进行中'
+        }
+      }
+      // 实际开始早于计划开始
+      else if (actualStart < plannedStart) {
+        if (currentDate > plannedEnd) {
+          return '异常' // 提前开始但超期
+        } else {
+          return '进行中'
+        }
+      }
+      // 实际开始晚于计划结束
+      else if (actualStart > plannedEnd) {
+        return '异常'
+      }
+    }
+    // 没有计划时间，但有实际开始
+    return '进行中'
+  }
+  
+  // 情况 3: 未启动的任务 (没有实际开始和结束时间)
+  if (!actualStart && !actualEnd) {
+    if (plannedStart && plannedEnd) {
+      // 当前日期在计划开始前
+      if (currentDate < plannedStart) {
+        return '未开始'
+      }
+      // 当前日期应该在计划范围内
+      else if (currentDate >= plannedStart && currentDate <= plannedEnd) {
+        return '异常' // 应该开始但未开始
+      }
+      // 当前日期超过计划结束时间
+      else if (currentDate > plannedEnd) {
+        return '异常' // 已经超期还未开始
+      }
+    } else if (plannedStart && currentDate < plannedStart) {
+      return '未开始'
+    } else {
+      return '未开始'
+    }
+  }
+  
+  // 其他异常情况
+  return '异常'
+}
+
 // 获取任务状态标签类型
 const getTaskStatusTagType = (status) => {
   switch (status) {
@@ -463,6 +1053,14 @@ const getTaskStatusTagType = (status) => {
       return 'success'
     case '已验收':
       return 'primary'
+    case '按时完成':
+      return 'success'
+    case '延期完成':
+      return 'danger'
+    case '完成':
+      return 'success'
+    case '异常':
+      return 'danger'
     default:
       return 'info'
   }

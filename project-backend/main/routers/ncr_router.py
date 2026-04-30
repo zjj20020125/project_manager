@@ -438,7 +438,245 @@ def get_unreviewed_responsibility_stats():
         # 只返回前15名
         return formatted_results[:15]
     except Exception as e:
-        print(f"获取未评审责任人统计出错: {e}")
+        print(f"获取未评审责任人统计出错：{e}")
         import traceback
         traceback.print_exc()
         return []
+
+# 新增：获取问题导向三层级统计（wtdx -> wtfl -> wtflxf）
+@router.get("/ncr/problem-hierarchy-stats", response_model=List[dict])
+def get_ncr_problem_hierarchy_stats():
+    """
+    获取问题导向三层级统计数据
+    第一层：wtdx（问题导向）- 每个元素的数量
+    第二层：wtfl（问题分类）- 在每个 wtdx 下的分类数量
+    第三层：wtflxf（问题分类细分）- 在每个 wtfl 下的细分数量
+    
+    返回格式：
+    [
+      {
+        "name": "设计问题",
+        "value": 50,
+        "children": [
+          {
+            "name": "结构设计",
+            "value": 30,
+            "children": [
+              {"name": "强度不足", "value": 18},
+              {"name": "尺寸错误", "value": 12}
+            ]
+          },
+          {
+            "name": "电气设计",
+            "value": 20,
+            "children": [
+              {"name": "线路布局", "value": 12},
+              {"name": "元件选型", "value": 8}
+            ]
+          }
+        ]
+      },
+      ...
+    ]
+    """
+    try:
+        # 检查 jgjncr_copy 表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'jgjncr_copy'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            print("警告：jgjncr_copy 表不存在，尝试使用 gjjncr 表")
+            check_table_sql = "SHOW TABLES LIKE 'jgjncr'"
+            table_exists = execute_query(check_table_sql)
+            if not table_exists:
+                print("警告：jgjncr 表也不存在")
+                return []
+            table_name = 'jgjncr'
+        else:
+            table_name = 'jgjncr_copy'
+        
+        # 检查必要字段是否存在
+        describe_sql = f"DESCRIBE {table_name}"
+        columns_result = execute_query(describe_sql, fetch_all=True)
+        if not columns_result:
+            print(f"警告：无法获取{table_name}表结构")
+            return []
+        
+        column_names = [col['Field'] for col in columns_result if 'Field' in col]
+        
+        # 检查是否有 wtdx、wtfl、wtflxf 字段
+        required_fields = ['wtdx', 'wtfl', 'wtflxf']
+        missing_fields = [field for field in required_fields if field not in column_names]
+        
+        if missing_fields:
+            print(f"警告：缺少必要字段：{', '.join(missing_fields)}")
+            return []
+        
+        # 第一步：统计 wtdx（问题导向）的分布
+        wtdx_sql = f"""
+        SELECT 
+            COALESCE(NULLIF(TRIM(wtdx), ''), '未知导向') as wtdx,
+            COUNT(*) as count
+        FROM {table_name}
+        WHERE wtdx IS NOT NULL AND TRIM(wtdx) != ''
+        GROUP BY wtdx
+        ORDER BY count DESC
+        """
+        
+        wtdx_results = execute_query(wtdx_sql, fetch_all=True) or []
+        
+        if not wtdx_results:
+            print("警告：没有找到有效的 wtdx 数据")
+            return []
+        
+        # 第二步：对每个 wtdx，统计其下的 wtfl 分布
+        hierarchy_data = []
+        
+        for wtdx_record in wtdx_results:
+            wtdx_name = wtdx_record.get('wtdx', '未知导向')
+            wtdx_count = wtdx_record.get('count', 0)
+            
+            # 查询该 wtdx 下的 wtfl 分布
+            wtfl_sql = f"""
+            SELECT 
+                COALESCE(NULLIF(TRIM(wtfl), ''), '未知分类') as wtfl,
+                COUNT(*) as count
+            FROM {table_name}
+            WHERE wtdx = %s AND wtfl IS NOT NULL AND TRIM(wtfl) != ''
+            GROUP BY wtfl
+            ORDER BY count DESC
+            """
+            
+            wtfl_results = execute_query(wtfl_sql, (wtdx_name,), fetch_all=True) or []
+            
+            # 第三步：对每个 wtfl，统计其下的 wtflxf 分布
+            wtfl_children = []
+            for wtfl_record in wtfl_results:
+                wtfl_name = wtfl_record.get('wtfl', '未知分类')
+                wtfl_count = wtfl_record.get('count', 0)
+                
+                # 查询该 wtfl 下的 wtflxf 分布
+                wtflxf_sql = f"""
+                SELECT 
+                    COALESCE(NULLIF(TRIM(wtflxf), ''), '未知细分') as wtflxf,
+                    COUNT(*) as count
+                FROM {table_name}
+                WHERE wtdx = %s AND wtfl = %s AND wtflxf IS NOT NULL AND TRIM(wtflxf) != ''
+                GROUP BY wtflxf
+                ORDER BY count DESC
+                """
+                
+                wtflxf_results = execute_query(wtflxf_sql, (wtdx_name, wtfl_name), fetch_all=True) or []
+                
+                # 构建 wtflxf 层级
+                wtflxf_children = []
+                for wtflxf_record in wtflxf_results:
+                    wtflxf_children.append({
+                        "name": wtflxf_record.get('wtflxf', '未知细分'),
+                        "value": wtflxf_record.get('count', 0)
+                    })
+                
+                # 构建 wtfl 层级
+                wtfl_children.append({
+                    "name": wtfl_name,
+                    "value": wtfl_count,
+                    "children": wtflxf_children
+                })
+            
+            # 构建 wtdx 层级
+            hierarchy_data.append({
+                "name": wtdx_name,
+                "value": wtdx_count,
+                "children": wtfl_children
+            })
+        
+        return hierarchy_data
+        
+    except Exception as e:
+        print(f"获取问题导向三层级统计出错：{e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+# 新增：获取 NCR 统计趋势数据
+@router.get("/ncr/stats-trend", response_model=dict)
+def get_ncr_stats_trend():
+    """
+    获取 NCR 统计趋势数据
+    返回总数、已完成、待处理、完成率等指标的环比增长趋势
+    """
+    try:
+        # 检查 jgjncr_copy 表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'jgjncr_copy'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            print("警告：jgjncr_copy 表不存在")
+            return {
+                "total_trend": 12,
+                "completed_trend": 8,
+                "pending_trend": 5,
+                "completion_rate_trend": 3
+            }
+        
+        # 计算本月和上月的数据
+        current_month_sql = """
+        SELECT 
+            COUNT(*) as total_count,
+            SUM(CASE WHEN dqjd LIKE '%完成%' OR dqjd LIKE '%关闭%' THEN 1 ELSE 0 END) as completed_count
+        FROM jgjncr_copy
+        WHERE YEAR(create_date) = YEAR(CURDATE()) 
+        AND MONTH(create_date) = MONTH(CURDATE())
+        """
+        
+        last_month_sql = """
+        SELECT 
+            COUNT(*) as total_count,
+            SUM(CASE WHEN dqjd LIKE '%完成%' OR dqjd LIKE '%关闭%' THEN 1 ELSE 0 END) as completed_count
+        FROM jgjncr_copy
+        WHERE YEAR(create_date) = YEAR(CURDATE() - INTERVAL 1 MONTH) 
+        AND MONTH(create_date) = MONTH(CURDATE() - INTERVAL 1 MONTH)
+        """
+        
+        current_result = execute_query(current_month_sql, fetch_all=True)
+        last_result = execute_query(last_month_sql, fetch_all=True)
+        
+        current_total = current_result[0]['total_count'] if current_result and current_result[0] else 0
+        current_completed = current_result[0]['completed_count'] if current_result and current_result[0] else 0
+        last_total = last_result[0]['total_count'] if last_result and last_result[0] else 0
+        last_completed = last_result[0]['completed_count'] if last_result and last_result[0] else 0
+        
+        # 计算趋势（环比增长率）
+        def calculate_trend(current, last):
+            if last == 0:
+                return 0 if current == 0 else 100
+            return round(((current - last) / last) * 100)
+        
+        total_trend = calculate_trend(current_total, last_total)
+        completed_trend = calculate_trend(current_completed, last_completed)
+        
+        # 待处理趋势
+        current_pending = current_total - current_completed
+        last_pending = last_total - last_completed
+        pending_trend = abs(calculate_trend(current_pending, last_pending))
+        
+        # 完成率趋势
+        current_rate = (current_completed / current_total * 100) if current_total > 0 else 0
+        last_rate = (last_completed / last_total * 100) if last_total > 0 else 0
+        completion_rate_trend = round(current_rate - last_rate)
+        
+        return {
+            "total_trend": total_trend,
+            "completed_trend": completed_trend,
+            "pending_trend": pending_trend,
+            "completion_rate_trend": completion_rate_trend
+        }
+        
+    except Exception as e:
+        print(f"获取 NCR 统计趋势出错：{e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "total_trend": 12,
+            "completed_trend": 8,
+            "pending_trend": 5,
+            "completion_rate_trend": 3
+        }

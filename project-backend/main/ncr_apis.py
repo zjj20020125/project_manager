@@ -361,26 +361,54 @@ async def get_ncr_by_stage(stage: str = None, status: str = None, priority: str 
             else:
                 print("警告: 表中没有review_level字段")
         
-        # 构建WHERE子句
+        # 构建 WHERE 子句
         where_clause = " AND ".join(conditions) if conditions else "1=1"
-        
+                
+        print(f"🔍 [DEBUG] 查询条件：{where_clause}")
+        print(f"🔍 [DEBUG] WHERE 参数：{params}")
+                
         # 查询数据总数
         count_sql = f"SELECT COUNT(*) as total FROM {table_name} WHERE {where_clause}"
         count_result = execute_query(count_sql, tuple(params))
         total_count = count_result.get('total', 0) if count_result else 0
+                
+        print(f"🔍 [DEBUG] 总记录数：{total_count}")
+                
+        # 确定排序字段（使用实际存在的字段）
+        order_field = None
+        if 'create_date' in column_names:
+            order_field = 'create_date'
+        elif 'create_time' in column_names:
+            order_field = 'create_time'
+        elif 'occur_date' in column_names:
+            order_field = 'occur_date'
+        elif 'process_no' in column_names:
+            order_field = 'process_no'
+        else:
+            # 如果都没有，使用第一个字段排序
+            order_field = column_names[0] if column_names else '*'
+            print(f"警告：表中没有找到合适的排序字段，使用 {order_field} 排序")
         
-        # 查询数据
+        print(f"🔍 [DEBUG] 使用排序字段：{order_field}")
+        
+        # 查询数据 - 只使用一个排序字段，避免 process_no 不存在的情况
         query_sql = f"""
         SELECT * FROM {table_name} 
         WHERE {where_clause}
-        ORDER BY create_date DESC, process_no DESC
+        ORDER BY {order_field} DESC
         LIMIT %s OFFSET %s
         """
-        
-        # 添加LIMIT和OFFSET参数
-        params.extend([limit, offset])
-        
-        ncr_data = execute_query(query_sql, tuple(params), fetch_all=True) or []
+                
+        # 构建完整的参数列表（WHERE 条件参数 + LIMIT + OFFSET）
+        query_params = params.copy() if isinstance(params, list) else list(params)
+        query_params.extend([limit, offset])
+                
+        print(f"🔍 [DEBUG] 查询 SQL: {query_sql}")
+        print(f"🔍 [DEBUG] 完整参数：{tuple(query_params)}")
+                
+        ncr_data = execute_query(query_sql, tuple(query_params), fetch_all=True) or []
+                
+        print(f"🔍 [DEBUG] 查询结果数量：{len(ncr_data)}")
         
         # 格式化数据
         formatted_data = []
@@ -462,7 +490,7 @@ async def get_ncr_detail(process_no: str):
 # 25. 获取NCR列表
 @router.get("/ncr/list")
 async def get_ncr_list(page: int = 1, limit: int = 20):
-    """获取NCR列表"""
+    """获取NCR列表（带分页）"""
     try:
         # 计算偏移量
         offset = (page - 1) * limit
@@ -477,7 +505,7 @@ async def get_ncr_list(page: int = 1, limit: int = 20):
             table_exists = execute_query(check_table_sql)
             if not table_exists:
                 print("警告: jgjncr表也不存在")
-                return []
+                return {"data": [], "total": 0}
             table_name = 'jgjncr'
         else:
             table_name = 'jgjncr_copy'
@@ -487,14 +515,32 @@ async def get_ncr_list(page: int = 1, limit: int = 20):
         columns_result = execute_query(describe_sql, fetch_all=True)
         if not columns_result:
             print(f"警告: 无法获取{table_name}表结构")
-            return []
+            return {"data": [], "total": 0}
         
         column_names = [col['Field'] for col in columns_result if 'Field' in col]
+                
+        # 确定排序字段
+        order_field = None
+        if 'create_date' in column_names:
+            order_field = 'create_date'
+        elif 'create_time' in column_names:
+            order_field = 'create_time'
+        elif 'occur_date' in column_names:
+            order_field = 'occur_date'
+        elif 'process_no' in column_names:
+            order_field = 'process_no'
+        else:
+            order_field = column_names[0] if column_names else '*'
         
-        # 查询NCR数据
+        # 查询总数
+        count_sql = f"SELECT COUNT(*) as total FROM {table_name}"
+        count_result = execute_query(count_sql, fetch_one=True)
+        total_count = count_result['total'] if count_result else 0
+        
+        # 查询 NCR 数据 - 只使用一个排序字段
         query_sql = f"""
         SELECT * FROM {table_name}
-        ORDER BY create_date DESC, process_no DESC
+        ORDER BY {order_field} DESC
         LIMIT %s OFFSET %s
         """
         
@@ -516,10 +562,108 @@ async def get_ncr_list(page: int = 1, limit: int = 20):
                         formatted_record[key] = value
                 formatted_data.append(formatted_record)
         
-        return formatted_data
+        return {
+            "data": formatted_data,
+            "total": total_count
+        }
     except Exception as e:
         print(f"获取NCR列表出错: {e}")
-        return []
+        import traceback
+        traceback.print_exc()
+        return {"data": [], "total": 0}
+
+# 25.1 获取NCR统计数据（用于顶部卡片）
+@router.get("/ncr/stats")
+async def get_ncr_stats():
+    """获取NCR统计数据：总数、已完成、待处理、完成率"""
+    try:
+        # 检查jgjncr_copy表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'jgjncr_copy'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            print("警告: jgjncr_copy表不存在，尝试使用jgjncr表")
+            check_table_sql = "SHOW TABLES LIKE 'jgjncr'"
+            table_exists = execute_query(check_table_sql)
+            if not table_exists:
+                print("警告: jgjncr表也不存在")
+                return {
+                    "total": 0,
+                    "completed": 0,
+                    "pending": 0,
+                    "completion_rate": "0%"
+                }
+            table_name = 'jgjncr'
+        else:
+            table_name = 'jgjncr_copy'
+        
+        # 检查dqjd字段是否存在
+        describe_sql = f"DESCRIBE {table_name}"
+        columns_result = execute_query(describe_sql, fetch_all=True)
+        if not columns_result:
+            print(f"警告: 无法获取{table_name}表结构")
+            return {
+                "total": 0,
+                "completed": 0,
+                "pending": 0,
+                "completion_rate": "0%"
+            }
+        
+        column_names = [col['Field'] for col in columns_result if 'Field' in col]
+        
+        if 'dqjd' not in column_names:
+            print(f"警告: {table_name}表中没有dqjd字段")
+            return {
+                "total": 0,
+                "completed": 0,
+                "pending": 0,
+                "completion_rate": "0%"
+            }
+        
+        # 查询总数
+        total_sql = f"SELECT COUNT(*) as total FROM {table_name}"
+        total_result = execute_query(total_sql, fetch_one=True)
+        total_count = total_result['total'] if total_result else 0
+        
+        # 查询已完成数量（dqjd包含'完成'或'关闭'）
+        completed_sql = f"""
+        SELECT COUNT(*) as completed 
+        FROM {table_name} 
+        WHERE dqjd LIKE '%完成%' OR dqjd LIKE '%关闭%'
+        """
+        completed_result = execute_query(completed_sql, fetch_one=True)
+        completed_count = completed_result['completed'] if completed_result else 0
+        
+        # 查询待处理数量（dqjd包含'未评审'或'待处理'或不包含'完成'）
+        pending_sql = f"""
+        SELECT COUNT(*) as pending 
+        FROM {table_name} 
+        WHERE dqjd LIKE '%未评审%' OR dqjd LIKE '%待处理%' OR (dqjd NOT LIKE '%完成%' AND dqjd NOT LIKE '%关闭%')
+        """
+        pending_result = execute_query(pending_sql, fetch_one=True)
+        pending_count = pending_result['pending'] if pending_result else 0
+        
+        # 计算完成率
+        completion_rate = "0%"
+        if total_count > 0:
+            rate = round((completed_count / total_count) * 100)
+            completion_rate = f"{rate}%"
+        
+        return {
+            "total": total_count,
+            "completed": completed_count,
+            "pending": pending_count,
+            "completion_rate": completion_rate
+        }
+    except Exception as e:
+        print(f"获取NCR统计数据出错: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "total": 0,
+            "completed": 0,
+            "pending": 0,
+            "completion_rate": "0%"
+        }
 
 # 26. 获取DQJD和WCZZ数据统计
 @router.get("/dqjd-wczz-data")
@@ -948,7 +1092,126 @@ def get_sscx_trend_statistics():
         traceback.print_exc()
         return []
 
-# 31. 获取SSCX字段近一年统计数据（前15名）
+# 32. 获取当前节点详情数据
+@router.post("/ncr/current-node-detail")
+async def get_current_node_detail(node_info: dict):
+    """
+    获取当前节点详情数据
+    根据前端传递的当前节点信息，返回该节点相关的所有信息和表格数据
+    支持多个节点的批量查询
+    """
+    try:
+        # 从请求体中获取节点信息
+        current_nodes = node_info.get('currentNodes', [])
+        
+        if not current_nodes:
+            return {"data": [], "total": 0, "nodeStats": []}
+        
+        # 检查 jgjncr_copy 表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'jgjncr_copy'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            print("警告：jgjncr_copy 表不存在，尝试使用 gjncr 表")
+            check_table_sql = "SHOW TABLES LIKE 'jgjncr'"
+            table_exists = execute_query(check_table_sql)
+            if not table_exists:
+                print("警告：jgjncr 表也不存在")
+                return {"data": [], "total": 0, "nodeStats": []}
+            table_name = 'jgjncr'
+        else:
+            table_name = 'jgjncr_copy'
+        
+        # 检查必要字段是否存在
+        describe_sql = f"DESCRIBE {table_name}"
+        columns_result = execute_query(describe_sql, fetch_all=True)
+        if not columns_result:
+            print(f"警告：无法获取{table_name}表结构")
+            return {"data": [], "total": 0, "nodeStats": []}
+        
+        column_names = [col['Field'] for col in columns_result if 'Field' in col]
+        
+        # 检查 dqjd 字段是否存在
+        if 'dqjd' not in column_names:
+            print(f"警告：{table_name}表中没有 dqjd 字段")
+            return {"data": [], "total": 0, "nodeStats": []}
+        
+        # 构建查询条件 - 支持多节点查询
+        conditions = []
+        params = []
+        
+        for node in current_nodes:
+            if node:
+                conditions.append("dqjd = %s")
+                params.append(node)
+        
+        where_clause = " OR ".join(conditions) if conditions else "1=1"
+        
+        # 查询数据总数
+        count_sql = f"SELECT COUNT(*) as total FROM {table_name} WHERE {where_clause}"
+        count_result = execute_query(count_sql, tuple(params))
+        total_count = count_result.get('total', 0) if count_result else 0
+        
+        # 查询每个节点的统计信息
+        node_stats = []
+        for node in current_nodes:
+            node_count_sql = f"SELECT COUNT(*) as count FROM {table_name} WHERE dqjd = %s"
+            node_count_result = execute_query(node_count_sql, (node,))
+            node_count = node_count_result.get('count', 0) if node_count_result else 0
+            node_stats.append({
+                'nodeName': node,
+                'count': node_count
+            })
+        
+        # 确定排序字段
+        order_field = None
+        if 'create_date' in column_names:
+            order_field = 'create_date'
+        elif 'create_time' in column_names:
+            order_field = 'create_time'
+        elif 'cjrq' in column_names:
+            order_field = 'cjrq'
+        elif 'process_no' in column_names:
+            order_field = 'process_no'
+        else:
+            order_field = column_names[0] if column_names else '*'
+        
+        # 查询详细数据（不限制数量，返回所有匹配的记录）
+        query_sql = f"""
+        SELECT * FROM {table_name}
+        WHERE {where_clause}
+        ORDER BY {order_field} DESC
+        """
+        
+        table_data = execute_query(query_sql, tuple(params), fetch_all=True) or []
+        
+        # 格式化表格数据
+        formatted_table_data = []
+        for record in table_data:
+            if record is not None:
+                formatted_record = {}
+                for key, value in record.items():
+                    # 处理日期字段
+                    if isinstance(value, datetime):
+                        formatted_record[key] = str(value)
+                    # 处理数字字段
+                    elif hasattr(value, 'quantize'):
+                        formatted_record[key] = float(value)
+                    else:
+                        formatted_record[key] = value
+                formatted_table_data.append(formatted_record)
+        
+        return {
+            "data": formatted_table_data,
+            "total": total_count,
+            "nodeStats": node_stats
+        }
+    except Exception as e:
+        print(f"获取当前节点详情数据出错：{e}")
+        import traceback
+        traceback.print_exc()
+        return {"data": [], "total": 0, "nodeStats": []}
+
+# 33. 获取 SSCX 字段近一年统计数据（前 15 名）
 @router.get("/ncr/sscx-yearly-stats", response_model=List[dict])
 def get_sscx_yearly_statistics():
     """获取jgjncr_copy表中sscx字段近一年数据出现次数统计（前15名）"""
@@ -1046,3 +1309,120 @@ def get_sscx_yearly_statistics():
         import traceback
         traceback.print_exc()
         return []
+
+# 26. 根据问题层级获取NCR列表(用于旭日图点击跳转)
+@router.get("/ncr/problem-hierarchy-detail", response_model=dict)
+async def get_ncr_by_problem_hierarchy(
+    level: str,  # wtdx/wtfl/wtflxf
+    name: str,   # 层级名称
+    status: Optional[str] = None,
+    priority: Optional[str] = None,
+    page: int = 1,
+    limit: int = 20
+):
+    """
+    根据问题层级获取NCR列表
+    - level: 层级类型 (wtdx=问题导向, wtfl=问题分类, wtflxf=问题分类细分)
+    - name: 层级名称 (如: 设计问题、尺寸偏差等)
+    """
+    try:
+        # 检查jgjncr_copy表是否存在
+        check_table_sql = "SHOW TABLES LIKE 'jgjncr_copy'"
+        table_exists = execute_query(check_table_sql)
+        if not table_exists:
+            print("警告: jgjncr_copy表不存在,尝试使用jgjncr表")
+            check_table_sql = "SHOW TABLES LIKE 'jgjncr'"
+            table_exists = execute_query(check_table_sql)
+            if not table_exists:
+                print("警告: jgjncr表也不存在")
+                return {"data": [], "total": 0}
+            table_name = 'jgjncr'
+        else:
+            table_name = 'jgjncr_copy'
+        
+        # 检查必要字段是否存在
+        describe_sql = f"DESCRIBE {table_name}"
+        columns_result = execute_query(describe_sql, fetch_all=True)
+        if not columns_result:
+            print(f"警告: 无法获取{table_name}表结构")
+            return {"data": [], "total": 0}
+        
+        column_names = [col['Field'] for col in columns_result if 'Field' in col]
+        
+        # 确定要查询的字段名
+        field_map = {
+            'wtdx': 'wtdx',      # 问题导向
+            'wtfl': 'wtfl',      # 问题分类
+            'wtflxf': 'wtflxf'   # 问题分类细分
+        }
+        
+        query_field = field_map.get(level)
+        if not query_field:
+            print(f"警告: 不支持的层级类型: {level}")
+            return {"data": [], "total": 0}
+        
+        if query_field not in column_names:
+            print(f"警告: 表中没有{query_field}字段 (当前请求的层级: {level})")
+            # 如果字段不存在，返回空结果但不报错
+            return {"data": [], "total": 0}
+        
+        # 构建WHERE条件
+        where_clauses = [f"{query_field} = %s"]
+        params = [name]
+        
+        # 添加状态筛选
+        if status:
+            where_clauses.append("status = %s")
+            params.append(status)
+        
+        # 添加优先级筛选
+        if priority:
+            where_clauses.append("priority = %s")
+            params.append(priority)
+        
+        where_sql = " AND ".join(where_clauses)
+        
+        # 查询总数
+        count_sql = f"SELECT COUNT(*) as total FROM {table_name} WHERE {where_sql}"
+        count_result = execute_query(count_sql, tuple(params), fetch_one=True)
+        total_count = count_result['total'] if count_result else 0
+        
+        # 计算分页
+        offset = (page - 1) * limit
+        
+        # 查询数据
+        query_sql = f"""
+        SELECT * FROM {table_name} 
+        WHERE {where_sql}
+        ORDER BY create_date DESC, id DESC
+        LIMIT %s OFFSET %s
+        """
+        query_params = tuple(params + [limit, offset])
+        ncr_data = execute_query(query_sql, query_params, fetch_all=True) or []
+        
+        # 格式化数据
+        formatted_data = []
+        for record in ncr_data:
+            if record is not None:
+                formatted_record = {}
+                for key, value in record.items():
+                    if isinstance(value, datetime):
+                        formatted_record[key] = str(value)
+                    elif hasattr(value, 'quantize'):
+                        formatted_record[key] = float(value)
+                    else:
+                        formatted_record[key] = value
+                formatted_data.append(formatted_record)
+        
+        print(f"✅ 问题层级详情查询成功: level={level}, name={name}, total={total_count}")
+        
+        return {
+            "data": formatted_data,
+            "total": total_count
+        }
+        
+    except Exception as e:
+        print(f"获取问题层级详情出错: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"data": [], "total": 0}

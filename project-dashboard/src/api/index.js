@@ -48,27 +48,47 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   response => {
     // 对响应数据做点什么
-    console.log('✅ API响应成功:', response.config.url, response.status); // 添加响应日志
+    console.log('✅ API 响应成功:', response.config.url, response.status); // 添加响应日志
+    
+    // 如果是 blob 类型的响应，直接返回 response.data
+    if (response.config.responseType === 'blob') {
+      return response.data;
+    }
+    
     return response.data;
   },
   async error => {
     console.log('❌ API响应错误:', error.message);
     
     // 处理Promise相关的异步错误
-    if (error.message && error.message.includes('message channel closed')) {
+    if (error.message && (error.message.includes('message channel closed') || 
+                          error.message.includes('A listener indicated an asynchronous response'))) {
       console.warn('🔧 检测到消息通道关闭错误，可能是扩展干扰');
-      // 尝试重新发送请求
       const config = error.config;
-      if (config && (!config.__retryCount || config.__retryCount < 3)) {
-        if (!config.__retryCount) config.__retryCount = 0;
+      
+      // 清理Chrome运行时错误
+      if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.lastError) {
+        chrome.runtime.lastError = null;
+      }
+      
+      // 设置重试计数
+      if (!config.__retryCount) {
+        config.__retryCount = 0;
+      }
+      
+      // 限制重试次数
+      if (config.__retryCount < 3) {
         config.__retryCount += 1;
-        console.log(`🔄 第 ${config.__retryCount} 次重试请求`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        console.log(`🔄 第 ${config.__retryCount} 次重试请求:`, config.url);
+        
+        // 延迟重试
+        await new Promise(resolve => setTimeout(resolve, 1500));
         return apiClient(config);
       } else {
+        // 重试次数用完，显示用户友好的错误提示
         showExtensionError();
         return Promise.reject({
-          message: '浏览器扩展干扰，请禁用相关扩展后重试',
+          message: '浏览器扩展干扰，请尝试以下解决方案：\n1. 禁用广告拦截器或隐私保护扩展\n2. 刷新页面重试\n3. 使用无痕/隐私模式浏览',
           type: 'extension_interference',
           originalError: error.message
         });
@@ -253,7 +273,7 @@ export const projectApi = {
   // 获取评审阶段责任人员分布统计
   getResponsibilityAnalysis: () => apiClient.get('/v1/ncr/responsibility-analysis'),
   
-  // 根据阶段获取NCR数据
+  // 根据阶段获取 NCR 数据
   getNcrByStage: (params = {}) => {
     const { stage = '', status = '', priority = '', page = 1, limit = 20 } = params;
     const queryParams = new URLSearchParams();
@@ -262,21 +282,32 @@ export const projectApi = {
     if (priority) queryParams.append('priority', priority);
     queryParams.append('page', page);
     queryParams.append('limit', limit);
-    
-    return apiClient.get(`/v1/ncr/by-stage?${queryParams.toString()}`);
+      
+    const url = `/v1/ncr/by-stage?${queryParams.toString()}`;
+    console.log('🌐 API 请求 URL:', url);
+      
+    return apiClient.get(url);
   },
   
   // 获取NCR详情
   getNcrDetail: (processNo) => apiClient.get(`/v1/ncr/detail/${processNo}`),
   
-  // 获取NCR列表
+  // 获取 NCR 列表
   getNcrList: (params = {}) => {
     const { page = 1, limit = 20 } = params;
     const queryParams = new URLSearchParams();
     queryParams.append('page', page);
     queryParams.append('limit', limit);
-    
+      
     return apiClient.get(`/v1/ncr/list?${queryParams.toString()}`);
+  },
+  
+  // 获取NCR统计数据（用于顶部卡片）
+  getNcrStats: () => apiClient.get('/v1/ncr/stats'),
+    
+  // 获取当前节点详情数据
+  getNcrCurrentNodeDetail: (nodeInfo) => {
+    return apiClient.post('/v1/ncr/current-node-detail', nodeInfo);
   },
   
   // 获取DQJD和WCZZ数据统计
@@ -294,8 +325,17 @@ export const projectApi = {
   // 获取SSCX时间趋势统计（按月份展示近一年数据）
   getSscxTrendStatistics: () => apiClient.get('/v1/ncr/sscx-trend'),
   
-  // 获取SSCX字段近一年统计数据（前15名）
+  // 获取 SSCX 字段近一年统计数据（前 15 名）
   getSscxYearlyStats: () => apiClient.get('/v1/ncr/sscx-yearly-stats'),
+    
+  // 获取问题导向三层级统计（wtdx -> wtfl -> wtflxf）
+ getNcrProblemHierarchyStats: () => apiClient.get('/v1/ncr/problem-hierarchy-stats'),
+  
+  // 获取 NCR 统计趋势数据
+  getNcrStatsTrend: () => apiClient.get('/v1/ncr/stats-trend'),
+  
+  // 获取问题层级详情列表（根据 wtdx/wtfl/wtflxf筛选）
+ getNcrByProblemHierarchy: (params) => apiClient.get('/v1/ncr/problem-hierarchy-detail', { params }),
   
   // 导入项目数据
   importProjects: (formData, overwrite = false) => {
@@ -321,11 +361,19 @@ export const projectApi = {
     return apiClient.post('/v1/projects/export', { project_ids: projectIds }, {
       responseType: 'blob'
     }).then(response => {
-      // 检查响应是否为blob类型
-      if (response && response.data instanceof Blob) {
-        return response.data; // 返回实际的blob数据
+      console.log('导出响应数据:', {
+        response,
+        responseDataType: typeof response,
+        isBlob: response instanceof Blob,
+        responseSize: response.size
+      });
+        
+      // 检查响应是否为 blob 类型
+      if (response instanceof Blob) {
+        return response; // 返回实际的 blob 数据
       } else {
-        // 如果不是预期的blob响应，抛出错误
+        // 如果不是预期的 blob 响应，抛出错误
+        console.error('意外的响应类型:', typeof response, response);
         throw new Error('服务器返回了意外的响应格式');
       }
     }).catch(error => {
@@ -347,7 +395,88 @@ export const projectApi = {
   // 修改项目信息（带项目ID）
   updateProject: (projectId, projectData) => {
     return apiClient.put(`/v1/projects/${projectId}`, projectData);
+  },
+  
+  // 更新任务信息
+  updateTask: (taskId, taskData) => {
+    return apiClient.put(`/v1/task/${taskId}`, taskData);
+  },
+  
+  // 刷新所有项目状态（根据最新任务数据重新计算）
+  refreshProjectsStatus: () => {
+    return apiClient.post('/v1/projects/refresh-status');
   }
+};
+
+// 客户反馈相关 API
+export const feedbackApi = {
+  // 获取反馈统计数据
+  getFeedbackStats: () => apiClient.get('/v1/feedback/stats'),
+  
+  // 获取反馈列表
+  getFeedbackList: (params = {}) => {
+    const { page = 1, limit = 20, status, feedback_type, priority, keyword } = params;
+    let url = `/v1/feedback/list?page=${page}&limit=${limit}`;
+    if (status) url += `&status=${status}`;
+    if (feedback_type) url += `&feedback_type=${feedback_type}`;
+    if (priority) url += `&priority=${priority}`;
+    if (keyword) url += `&keyword=${encodeURIComponent(keyword)}`;
+    return apiClient.get(url);
+  },
+  
+  // 获取反馈详情
+  getFeedbackDetail: (feedbackId) => apiClient.get(`/v1/feedback/${feedbackId}`),
+  
+  // 创建反馈
+  createFeedback: (feedbackData) => apiClient.post('/v1/feedback/', feedbackData),
+  
+  // 更新反馈
+  updateFeedback: (feedbackId, feedbackData) => apiClient.put(`/v1/feedback/${feedbackId}`, feedbackData),
+  
+  // 删除反馈
+  deleteFeedback: (feedbackId) => apiClient.delete(`/v1/feedback/${feedbackId}`),
+  
+  // 导出反馈数据
+  exportFeedback: (params = {}) => {
+    const { status, feedback_type, start_date, end_date } = params;
+    let url = '/v1/feedback/export/excel?';
+    if (status) url += `&status=${status}`;
+    if (feedback_type) url += `&feedback_type=${feedback_type}`;
+    if (start_date) url += `&start_date=${start_date}`;
+    if (end_date) url += `&end_date=${end_date}`;
+    return apiClient.get(url);
+  },
+  
+  // 获取质量问题统计数据
+  getProblemStats: (params = {}) => {
+    const queryParams = new URLSearchParams();
+    Object.keys(params).forEach(key => {
+      if (params[key] !== null && params[key] !== '') {
+        queryParams.append(key, params[key]);
+      }
+    });
+    return apiClient.get(`/v1/feedback/problem/stats?${queryParams.toString()}`);
+  },
+  
+  // 获取质量问题列表
+  getProblemList: (params = {}) => {
+    const queryParams = new URLSearchParams();
+    Object.keys(params).forEach(key => {
+      if (params[key] !== null && params[key] !== '') {
+        queryParams.append(key, params[key]);
+      }
+    });
+    return apiClient.get(`/v1/feedback/problem/list?${queryParams.toString()}`);
+  },
+  
+  // 获取质量问题详情
+  getProblemDetail: (problemId) => apiClient.get(`/v1/feedback/problem/detail/${problemId}`),
+  
+  // 获取质量问题筛选条件选项
+  getProblemFilters: () => apiClient.get('/v1/feedback/problem/filters'),
+  
+  // 创建质量问题
+  createProblem: (problemData) => apiClient.post('/v1/feedback/problem/', problemData),
 };
 
 export default apiClient;

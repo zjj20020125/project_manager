@@ -39,16 +39,16 @@ def execute_query(query, params=None, fetch_all=False, fetch_one=True):
             else:
                 result = cursor.fetchone()
             return result
-        elif query.strip().upper().startswith(('INSERT', 'UPDATE', 'DELETE')):
-            # 对于INSERT, UPDATE, DELETE查询，执行commit
+        elif query.strip().upper().startswith(('INSERT', 'UPDATE', 'DELETE', 'ALTER', 'CREATE', 'DROP', 'TRUNCATE')):
+            # 对于 DDL 和 DML 查询，执行 commit
             connection.commit()
-            # 对于INSERT查询，如果需要获取LAST_INSERT_ID，则单独处理
+            # 对于 INSERT 查询，如果需要获取 LAST_INSERT_ID，则单独处理
             if query.strip().upper().startswith('INSERT'):
                 lastrowid = cursor.lastrowid
                 return lastrowid
             else:
-                # 对于UPDATE, DELETE查询，返回受影响的行数
-                return cursor.rowcount
+                # 对于 UPDATE, DELETE, ALTER 等查询，返回成功标志
+                return True
         else:
             # 对于其他查询，执行commit并返回结果
             connection.commit()

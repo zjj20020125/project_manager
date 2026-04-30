@@ -143,22 +143,76 @@ class ProjectService:
 
     @staticmethod
     def calculate_project_status(planned_start: date, planned_end: date, 
-                               actual_start: date = None, actual_end: date = None) -> str:
-        """根据日期计算项目状态"""
+                               actual_start: date = None, actual_end: date = None,
+                               project_id: int = None) -> str:
+        """根据日期计算项目状态
+        
+        参数:
+            planned_start: 计划开始日期
+            planned_end: 计划结束日期
+            actual_start: 实际开始日期
+            actual_end: 实际结束日期
+            project_id: 项目ID（可选），用于检查是否有异常子任务
+        """
         current_date = datetime.now().date()
         
-        # 如果有实际完成日期且早于当前日期，则为已结项
-        if actual_end and actual_end < current_date:
+        # 如果有实际结束日期且晚于当前日期，则为已完成（延期完成）
+        if actual_end and actual_end > current_date:
+            return "已完成（延期完成）"
+        # 如果有实际完成日期且早于或等于当前日期，则为已结项
+        elif actual_end and actual_end <= current_date:
             return "已完成"
+        # 如果有实际开始时间，说明项目已经启动
+        elif actual_start:
+            # 【新增】检查是否有异常子任务（判断顺序在2和3之间）
+            if project_id:
+                has_abnormal_tasks = ProjectService._check_abnormal_subtasks(project_id)
+                if has_abnormal_tasks:
+                    return "异常"
+            
+            # 计划时间范围内
+            if planned_start and planned_end and planned_start <= current_date <= planned_end:
+                return "进行中"
+            # 计划时间已过但未完成
+            else:
+                return "进行中（延期）"
         # 如果计划开始日期晚于当前日期，则为未开始
         elif planned_start and planned_start > current_date:
             return "未开始"
         # 如果当前日期在计划期间内，则为进行中
         elif planned_start and planned_end and planned_start <= current_date <= planned_end:
             return "进行中"
-        # 其他情况
+        # 其他情况：计划时间已过，但没有实际开始
         else:
             return "已计划"
+    
+    @staticmethod
+    def _check_abnormal_subtasks(project_id: int) -> bool:
+        """检查项目下是否有状态为'异常'的子任务
+        
+        参数:
+            project_id: 项目ID
+        
+        返回:
+            True: 存在异常子任务
+            False: 不存在异常子任务
+        """
+        try:
+            # 查询该项目下是否有状态为'异常'的子任务
+            check_sql = """
+            SELECT COUNT(*) as abnormal_count
+            FROM project_tasks
+            WHERE project_id = %s AND task_status = '异常'
+            """
+            result = execute_query(check_sql, (project_id,), fetch_one=True)
+            
+            if result and result.get('abnormal_count', 0) > 0:
+                print(f"⚠️ 项目 ID={project_id} 存在 {result['abnormal_count']} 个异常子任务")
+                return True
+            return False
+        except Exception as e:
+            print(f"检查异常子任务失败: {e}")
+            return False
 
     @staticmethod
     def parse_filename_for_project_info(filename: str) -> tuple:

@@ -27,6 +27,10 @@ from main.routers.task_router import router as task_router
 from main.routers.chart_router import router as chart_router
 from main.routers.project_router import router as project_detail_router
 from main.routers.data_router import router as data_router
+from main.routers.feedback_router import router as feedback_router
+
+# 导入定时刷新任务状态
+from main.task_status_refresher import start_auto_refresh, stop_auto_refresh, get_refresher_instance
 
 # 导入服务层（用于未来扩展）
 from services.project_service import ProjectService
@@ -59,7 +63,8 @@ app.include_router(gantt_router)
 app.include_router(task_router)
 app.include_router(project_detail_router)
 app.include_router(data_router)
-# 注意：chart_router和ncr_router放在最后，避免路由冲突
+app.include_router(feedback_router)  # 客户反馈管理路由
+# 注意：chart_router 和 ncr_router 放在最后，避免路由冲突
 app.include_router(chart_router)
 app.include_router(ncr_router)
 
@@ -67,7 +72,7 @@ app.include_router(ncr_router)
 @app.get("/")
 async def root():
     return {
-        "message": "模块化项目管理系统API服务正在运行",
+        "message": "模块化项目管理系统 API 服务正在运行",
         "version": "2.0",
         "modules": {
             "project_management": "/v1/project/stats",
@@ -76,7 +81,11 @@ async def root():
             "task_management": "/v1/task/list",
             "chart_statistics": "/v1/chart/data",
             "project_details": "/v1/projects/detail",
-            "data_management": "/v1/projects/import"
+            "data_management": "/v1/projects/import",
+            "customer_feedback": "/v1/feedback/stats"
+        },
+        "features": {
+            "auto_task_status_refresh": "已启动 (每 5 分钟)"
         }
     }
 
@@ -109,6 +118,7 @@ async def get_project_subtasks(project_identifier: str):
         column_names = [col['Field'] for col in columns_result if 'Field' in col]
         required_columns = ['project_name', 'project_id', 'wbs_code', 'task_name', 'task_owner', 'task_status', 'planned_start_date', 'planned_end_date', 'actual_start_date', 'actual_end_date', 'progress']
         missing_columns = [col for col in required_columns if col not in column_names]
+
         
         if missing_columns:
             print(f"警告: project_tasks表缺少以下列: {missing_columns}")
@@ -174,6 +184,88 @@ async def get_project_subtasks(project_identifier: str):
         import traceback
         traceback.print_exc()
         return []
+
+# 手动刷新任务状态 API
+@app.post("/v1/task/refresh-status")
+async def refresh_task_status_manually():
+    """手动刷新所有任务的状态（立即执行）"""
+    try:
+        from datetime import datetime
+        refresher = get_refresher_instance()
+        
+        # 立即执行一次刷新
+        refresher.refresh_all_tasks_status()
+        
+        return {
+            "success": True,
+            "message": "任务状态刷新完成",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+    except Exception as e:
+        print(f"手动刷新任务状态失败：{e}")
+        raise HTTPException(status_code=500, detail=f"刷新失败：{str(e)}")
+
+@app.get("/v1/task/refresh-status/{task_id}")
+async def refresh_single_task_status(task_id: int):
+    """手动刷新单个任务的状态"""
+    try:
+        from datetime import datetime
+        refresher = get_refresher_instance()
+        
+        # 刷新单个任务
+        new_status = refresher.refresh_single_task(task_id)
+        
+        if new_status:
+            return {
+                "success": True,
+                "task_id": task_id,
+                "new_status": new_status,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+        else:
+            return {
+                "success": False,
+                "message": "任务不存在或无需更新",
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+    except Exception as e:
+        print(f"刷新单个任务状态失败：{e}")
+        raise HTTPException(status_code=500, detail=f"刷新失败：{str(e)}")
+
+# 启动服务
+@app.on_event("startup")
+async def startup_event():
+    """应用启动时执行"""
+    print("\n" + "="*60)
+    print("🚀 模块化项目管理系统启动中...")
+    print("="*60)
+    
+    # 启动定时刷新任务状态
+    try:
+        start_auto_refresh()
+        print("✅ 任务状态自动刷新功能已启动")
+    except Exception as e:
+        print(f"⚠️ 任务状态自动刷新功能启动失败：{e}")
+    
+    print("="*60)
+    print("✨ 系统启动完成!\n")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """应用关闭时执行"""
+    print("\n" + "="*60)
+    print("⏹️ 模块化项目管理系统关闭中...")
+    print("="*60)
+    
+    # 停止定时刷新任务状态
+    try:
+        stop_auto_refresh()
+        print("✅ 任务状态自动刷新功能已停止")
+    except Exception as e:
+        print(f"⚠️ 任务状态自动刷新功能停止失败：{e}")
+    
+    print("="*60)
+    print("👋 系统已关闭\n")
 
 # 启动服务
 if __name__ == "__main__":

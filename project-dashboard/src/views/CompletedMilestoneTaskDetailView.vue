@@ -89,11 +89,11 @@
           </template>
         </el-table-column>
         
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column prop="status" label="状态" width="120">
           <template #default="scope">
-            <el-tag :type="getStatusTagType(scope.row.status)">
+            <div class="status-progress-bar" :style="getStatusProgressBarStyle(scope.row.status)">
               {{ scope.row.status }}
-            </el-tag>
+            </div>
           </template>
         </el-table-column>
         
@@ -257,7 +257,52 @@ const calculateStats = async () => {
   totalTasks.value = allCompletedMilestones.length
 }
 
-// 根据状态获取标签类型
+// 根据状态获取进度条样式
+const getStatusProgressBarStyle = (status) => {
+  const baseStyle = {
+    padding: '4px 8px',
+    borderRadius: '4px',
+    textAlign: 'center',
+    fontWeight: 'bold',
+    fontSize: '12px',
+    color: 'white'
+  }
+  
+  switch (status) {
+    case '未开始':
+      return {
+        ...baseStyle,
+        backgroundColor: '#909399',
+        boxShadow: '0 2px 4px rgba(144, 147, 153, 0.3)'
+      }
+    case '进行中':
+      return {
+        ...baseStyle,
+        backgroundColor: '#E6A23C',
+        boxShadow: '0 2px 4px rgba(230, 162, 60, 0.3)'
+      }
+    case '已完成':
+      return {
+        ...baseStyle,
+        backgroundColor: '#67C23A',
+        boxShadow: '0 2px 4px rgba(103, 194, 58, 0.3)'
+      }
+    case '已验收':
+      return {
+        ...baseStyle,
+        backgroundColor: '#E6A23C',
+        boxShadow: '0 2px 4px rgba(230, 162, 60, 0.3)'
+      }
+    default:
+      return {
+        ...baseStyle,
+        backgroundColor: '#909399',
+        boxShadow: '0 2px 4px rgba(144, 147, 153, 0.3)'
+      }
+  }
+}
+
+// 根据状态获取标签类型（保留用于其他地方）
 const getStatusTagType = (status) => {
   switch (status) {
     case '未开始':

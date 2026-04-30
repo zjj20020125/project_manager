@@ -174,66 +174,68 @@ class TaskService:
 
             print(f"统计API查询到的异常任务总数: {len(abnormal_tasks_results)}")
             
-            # 按项目分组，区分第一个异常节点和后续异常节点
-            project_first_abnormal = {}  # 记录每个项目的第一个异常节点
+            # 按项目分组，正确判断异常类型
+            project_tasks = {}  # 按项目分组所有异常任务
             owner_stats = {
-                'first_abnormal': {},  # 第一个异常节点的负责人统计
+                'first_abnormal': {},  # 首个异常节点的负责人统计
                 'delayed_progress': {}  # 进度推迟的负责人统计
             }
 
-            # 专门检查朱剑文的数据
-            zhu_tasks = []
-            for task in abnormal_tasks_results:
-                if task and task.get('task_owner') and '朱剑文' in task.get('task_owner', ''):
-                    zhu_tasks.append(task)
-            
-            print(f"包含'朱剑文'的任务数: {len(zhu_tasks)}")
-            for task in zhu_tasks:
-                print(f"  项目: {task.get('project_name')}, 任务: {task.get('task_name')}, 负责人: {task.get('task_owner')}, 时间: {task.get('created_at')}")
-
+            # 首先按项目分组所有异常任务
             for task in abnormal_tasks_results:
                 if task is not None:
                     project_name = task.get('project_name', '')
+                    if project_name:
+                        if project_name not in project_tasks:
+                            project_tasks[project_name] = []
+                        project_tasks[project_name].append(task)
+
+            # 对每个项目单独处理，正确判断异常类型
+            for project_name, project_task_list in project_tasks.items():
+                # 按WBS编码排序
+                sorted_tasks = sorted(project_task_list, key=lambda x: x.get('wbs_code', '') or '')
+                
+                # 为每个负责人分别统计
+                owner_processed = set()  # 记录已处理的负责人
+                
+                # 遍历排序后的任务，判断每个负责人的异常类型
+                for task in sorted_tasks:
                     task_owner = task.get('task_owner', '')
-                    created_at = task.get('created_at', '')
+                    if not task_owner or not task_owner.strip():
+                        continue
+                        
+                    # 处理多个负责人的情况
+                    separators = [',', '，', ';', '；', '/', '、']
+                    names = [task_owner]
+                    for sep in separators:
+                        if sep in task_owner:
+                            names = task_owner.split(sep)
+                            break
                     
-                    if project_name and task_owner and task_owner.strip():
-                        # 处理多个负责人的情况（逗号、分号、顿号分隔）
-                        separators = [',', '，', ';', '；', '/', '、']
-                        names = [task_owner]
-
-                        # 尝试分割多个负责人
-                        for sep in separators:
-                            if sep in task_owner:
-                                names = task_owner.split(sep)
-                                break
-                        
-                        # 清理并统计每个负责人
-                        clean_names = []
-                        for name in names:
-                            clean_name = name.strip()
-                            if clean_name and clean_name not in ['nan', 'NaN', 'null', 'NULL', '<NULL>', 'None']:
-                                clean_names.append(clean_name)
-                        
-                        # 恢复原来的逻辑：包含多人共同负责的任务
-                        # 每个负责人都要统计，即使是共享任务
-                        for clean_name in clean_names:
-                            # 判断是否为该项目的第一个异常节点
-                            is_first_abnormal = False
-                            if project_name not in project_first_abnormal:
-                                project_first_abnormal[project_name] = created_at
-                                is_first_abnormal = True
-                            else:
-                                # 如果当前任务的创建时间更早，则更新为第一个异常节点
-                                if created_at and (not project_first_abnormal[project_name] or created_at < project_first_abnormal[project_name]):
-                                    project_first_abnormal[project_name] = created_at
-                                    is_first_abnormal = True
-
-                            # 统计每个负责人（包括共享任务的每个负责人）
+                    # 清理负责人名称
+                    clean_names = []
+                    for name in names:
+                        clean_name = name.strip()
+                        if clean_name and clean_name not in ['nan', 'NaN', 'null', 'NULL', '<NULL>', 'None']:
+                            clean_names.append(clean_name)
+                    
+                    # 为每个负责人判断异常类型
+                    for clean_name in clean_names:
+                        if clean_name in owner_processed:
+                            # 已经处理过的负责人，计入进度推迟
+                            owner_stats['delayed_progress'][clean_name] = owner_stats['delayed_progress'].get(clean_name, 0) + 1
+                        else:
+                            # 判断是否为首个异常节点
+                            is_first_abnormal = TaskService._check_is_first_abnormal_for_stats(
+                                task, sorted_tasks, clean_name
+                            )
+                            
                             if is_first_abnormal:
                                 owner_stats['first_abnormal'][clean_name] = owner_stats['first_abnormal'].get(clean_name, 0) + 1
                             else:
                                 owner_stats['delayed_progress'][clean_name] = owner_stats['delayed_progress'].get(clean_name, 0) + 1
+                            
+                            owner_processed.add(clean_name)
 
             # 合并统计结果
             merged_stats = {}
@@ -371,6 +373,97 @@ class TaskService:
             return []
     
     @staticmethod
+    def _determine_abnormal_type(task, wbs_code, owner_task_wbs_map, all_sorted_tasks, owner_name):
+        """判断任务的异常类型：首个异常节点 vs 进度推迟（基于整个项目）"""
+        task_status = task['task_status']
+        project_name = task['project_name']
+        
+        # 新规则：
+        # 规则1：在整个项目中第一个出现异常的任务 -> 首个异常节点
+        # 规则2：如果不是第一个异常任务 -> 进度推迟
+        
+        # 检查是否为整个项目中的首个异常任务
+        is_first_abnormal = TaskService._check_is_first_abnormal(task, all_sorted_tasks, owner_name)
+        
+        if is_first_abnormal:
+            return {'chinese': '首个异常节点', 'english': 'first_abnormal'}
+        else:
+            return {'chinese': '进度推迟', 'english': 'delayed_progress'}
+    
+    @staticmethod
+    def _check_predecessor_delay(current_wbs, all_sorted_tasks, owner_name):
+        """检查当前任务是否因为前置任务未完成而延迟"""
+        current_level = len(current_wbs.split('.')) if '.' in current_wbs else 1
+        
+        # 查找同级或上级的前置任务
+        for task in all_sorted_tasks:
+            task_wbs = task['wbs_code'] or ''
+            task_owner = task['task_owner'] or ''
+            task_status = task['task_status']
+            
+            # 清理负责人名称
+            separators = [',', '，', ';', '；', '/', '、']
+            names = [task_owner]
+            for sep in separators:
+                if sep in task_owner:
+                    names = task_owner.split(sep)
+                    break
+            clean_names = [name.strip() for name in names if name.strip() not in ['nan', 'NaN', 'null', 'NULL', '<NULL>', 'None']]
+            
+            # 检查是否为前置任务（WBS层级更高或同级但顺序在前）
+            task_level = len(task_wbs.split('.')) if '.' in task_wbs else 1
+            
+            # 如果是前置任务且未完成，且由相同负责人负责
+            if (task_level < current_level or (task_level == current_level and task_wbs < current_wbs)) \
+               and task_status != '完成' \
+               and owner_name in clean_names:
+                return True
+        
+        return False
+    
+    @staticmethod
+    def _check_is_first_abnormal(target_task, all_sorted_tasks, owner_name):
+        """检查是否为整个项目中的首个异常任务（不区分负责人）"""
+        target_wbs = target_task['wbs_code'] or ''
+        
+        # 按WBS顺序检查之前的任务
+        for task in all_sorted_tasks:
+            task_wbs = task['wbs_code'] or ''
+            if task_wbs >= target_wbs:  # 到达或超过目标任务，停止检查
+                break
+                
+            task_status = task['task_status']
+            
+            # 如果之前有任何任务出现异常，则当前不是首个异常节点
+            if task_status == '异常':
+                return False
+        
+        return True
+    
+    @staticmethod
+    def _check_is_first_abnormal_for_stats(target_task, all_sorted_tasks, owner_name):
+        """为统计API检查是否为首个异常节点（基于整个项目，不区分负责人）"""
+        target_wbs = target_task.get('wbs_code', '') or ''
+        target_created_at = target_task.get('created_at', '')
+        
+        # 按WBS和创建时间排序检查之前的任务
+        for task in all_sorted_tasks:
+            task_wbs = task.get('wbs_code', '') or ''
+            task_created_at = task.get('created_at', '')
+            
+            # 如果是同一任务或后面的，停止检查
+            if task_wbs > target_wbs or (task_wbs == target_wbs and task_created_at >= target_created_at):
+                break
+            
+            task_status = task.get('task_status', '')
+            
+            # 如果之前有任何任务出现异常，则当前不是首个异常节点
+            if task_status == '异常':
+                return False
+        
+        return True
+    
+    @staticmethod
     def get_abnormal_task_detail_by_owner(owner_name: str) -> List[Dict]:
         """获取指定负责人的异常子任务详情，区分首个异常节点和进度推迟"""
         try:
@@ -432,56 +525,69 @@ class TaskService:
             if not tasks:
                 return []
             
-            # 按项目分组，区分首个异常节点和进度推迟（与统计API使用相同的逻辑）
-            project_first_abnormal = {}  # 记录每个项目的第一个异常节点时间
+            # 按项目分组，正确判断首个异常节点
+            project_first_abnormal_tasks = {}  # 记录每个项目的第一个异常任务信息
             result_tasks = []
             
+            # 首先按项目分组所有异常任务
+            project_tasks = {}
             for task in tasks:
                 project_name = task['project_name']
-                created_at = task['created_at']
-                task_owner = task['task_owner']
+                if project_name not in project_tasks:
+                    project_tasks[project_name] = []
+                project_tasks[project_name].append(task)
+            
+            # 对每个项目单独处理，正确判断异常类型
+            for project_name, project_task_list in project_tasks.items():
+                # 按WBS编码排序，确定任务层级关系
+                sorted_tasks = sorted(project_task_list, key=lambda x: x['wbs_code'] or '')
                 
-                # 处理多个负责人的情况
-                separators = [',', '，', ';', '；', '/', '、']
-                names = [task_owner]
-                for sep in separators:
-                    if sep in task_owner:
-                        names = task_owner.split(sep)
-                        break
+                # 收集该负责人在该项目中的所有异常任务
+                owner_tasks_in_project = []
+                owner_task_wbs_map = {}  # 记录该负责人的任务WBS映射
                 
-                # 清理负责人名称并检查是否匹配
-                clean_names = []
-                for name in names:
-                    clean_name = name.strip()
-                    if clean_name and clean_name not in ['nan', 'NaN', 'null', 'NULL', '<NULL>', 'None']:
-                        clean_names.append(clean_name)
-                
-                # 对每个负责人都生成一条记录（与统计API保持一致的逻辑）
-                for clean_name in clean_names:
-                    # 只处理匹配的负责人
-                    if clean_name != owner_name:
-                        continue
-                
-                    # 使用与统计API完全相同的项目首个异常节点判断逻辑
-                    is_first_abnormal = False
-                    if project_name not in project_first_abnormal:
-                        project_first_abnormal[project_name] = created_at
-                        is_first_abnormal = True
-                    else:
-                        # 如果当前任务的创建时间更早，则更新为第一个异常节点
-                        if created_at and (not project_first_abnormal[project_name] or created_at < project_first_abnormal[project_name]):
-                            project_first_abnormal[project_name] = created_at
-                            is_first_abnormal = True
+                # 第一遍：收集该负责人的所有异常任务
+                for task in sorted_tasks:
+                    task_owner = task['task_owner']
+                    wbs_code = task['wbs_code'] or ''
                     
-                    # 为任务添加分类标记
+                    # 处理多个负责人的情况
+                    separators = [',', '，', ';', '；', '/', '、']
+                    names = [task_owner]
+                    for sep in separators:
+                        if sep in task_owner:
+                            names = task_owner.split(sep)
+                            break
+                    
+                    # 清理负责人名称
+                    clean_names = []
+                    for name in names:
+                        clean_name = name.strip()
+                        if clean_name and clean_name not in ['nan', 'NaN', 'null', 'NULL', '<NULL>', 'None']:
+                            clean_names.append(clean_name)
+                    
+                    # 检查该任务是否由目标负责人负责
+                    if owner_name in clean_names:
+                        owner_tasks_in_project.append(task)
+                        owner_task_wbs_map[wbs_code] = task
+                
+                # 第二遍：判断每个任务的异常类型
+                for task in owner_tasks_in_project:
                     task_copy = task.copy()
-                    if is_first_abnormal:
-                        task_copy['abnormal_type'] = '首个异常节点'
-                        task_copy['abnormal_type_en'] = 'first_abnormal'
-                    else:
-                        task_copy['abnormal_type'] = '进度推迟'
-                        task_copy['abnormal_type_en'] = 'delayed_progress'
+                    wbs_code = task['wbs_code'] or ''
+                    task_status = task['task_status']
                     
+                    # 判断异常类型的核心逻辑
+                    abnormal_type = TaskService._determine_abnormal_type(
+                        task, 
+                        wbs_code, 
+                        owner_task_wbs_map, 
+                        sorted_tasks,
+                        owner_name
+                    )
+                    
+                    task_copy['abnormal_type'] = abnormal_type['chinese']
+                    task_copy['abnormal_type_en'] = abnormal_type['english']
                     result_tasks.append(task_copy)
             
             # 按创建时间整体排序

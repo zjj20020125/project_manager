@@ -126,9 +126,9 @@
           </el-table-column>
           <el-table-column prop="status" label="任务状态" width="120" align="center" header-align="center">
             <template #default="scope">
-              <el-tag type="danger">
+              <div class="status-progress-bar" :style="getStatusProgressBarStyle(scope.row.status)">
                 {{ scope.row.status }}
-              </el-tag>
+              </div>
             </template>
           </el-table-column>
         </el-table>
@@ -194,29 +194,48 @@ const searchKeyword = ref('')
 const routeStats = getOwnerStatsFromRoute();
 
 // 计算属性 - 优先使用路由传递的统计信息
-const totalTasks = computed(() => routeStats ? routeStats.total_count : abnormalTasks.value.length)
+const totalTasks = computed(() => {
+  const count = routeStats ? routeStats.total_count : abnormalTasks.value.length
+  console.log('🔢 总任务数计算:', count, '(路由统计:', !!routeStats, ')')
+  return count
+})
 
-const firstAbnormalCount = computed(() => routeStats ? routeStats.first_abnormal_count : abnormalTasks.value.filter(task => task.abnormal_type_en === 'first_abnormal').length)
+const firstAbnormalCount = computed(() => {
+  const count = routeStats ? routeStats.first_abnormal_count : abnormalTasks.value.filter(task => task.abnormal_type_en === 'first_abnormal').length
+  console.log('🔴 首个异常节点数:', count)
+  return count
+})
 
-const delayedProgressCount = computed(() => routeStats ? routeStats.delayed_progress_count : abnormalTasks.value.filter(task => task.abnormal_type_en === 'delayed_progress').length)
+const delayedProgressCount = computed(() => {
+  const count = routeStats ? routeStats.delayed_progress_count : abnormalTasks.value.filter(task => task.abnormal_type_en === 'delayed_progress').length
+  console.log('🟡 进度推迟数:', count)
+  return count
+})
 
 const filteredTasks = computed(() => {
+  console.log('🔄 计算过滤任务，原始数据长度:', abnormalTasks.value.length)
   let result = [...abnormalTasks.value]
+  console.log('📋 原始数据示例:', result.slice(0, 2))
   
   // 按异常类型筛选
   if (abnormalTypeFilter.value) {
+    console.log('🔍 按异常类型筛选:', abnormalTypeFilter.value)
     result = result.filter(task => task.abnormal_type_en === abnormalTypeFilter.value)
+    console.log('📊 筛选后数据长度:', result.length)
   }
   
   // 按关键词搜索
   if (searchKeyword.value) {
+    console.log('🔍 按关键词搜索:', searchKeyword.value)
     const keyword = searchKeyword.value.toLowerCase()
     result = result.filter(task => 
       (task.taskName && task.taskName.toLowerCase().includes(keyword)) ||
       (task.projectName && task.projectName.toLowerCase().includes(keyword))
     )
+    console.log('📊 搜索后数据长度:', result.length)
   }
   
+  console.log('🏁 最终过滤结果长度:', result.length)
   return result
 })
 
@@ -243,18 +262,81 @@ const fetchAbnormalOwnerDetails = async () => {
     }
     
     ownerName.value = decodeURIComponent(owner)
+    console.log('🔍 开始获取负责人异常任务详情:', ownerName.value)
     
     // 使用新的API获取带有分类信息的异常任务详情
     const tasksResponse = await projectApi.getAbnormalTaskDetailByOwner(ownerName.value)
     
-    if (tasksResponse) {
+    console.log('📥 API响应数据:', tasksResponse)
+    console.log('📊 数据类型:', typeof tasksResponse)
+    console.log('📈 数据长度:', Array.isArray(tasksResponse) ? tasksResponse.length : '不是数组')
+    
+    if (tasksResponse && Array.isArray(tasksResponse) && tasksResponse.length > 0) {
       abnormalTasks.value = tasksResponse
+      console.log('✅ 成功设置异常任务数据，共', tasksResponse.length, '条记录')
+      console.log('📋 前几条数据示例:', tasksResponse.slice(0, 2))
+    } else {
+      console.warn('⚠️ API返回空数据或无效数据')
+      abnormalTasks.value = []
+      ElMessage.warning('暂无异常任务数据')
     }
   } catch (error) {
-    console.error('获取异常节点负责人详情失败:', error)
+    console.error('💥 获取异常节点负责人详情失败:', error)
+    console.error('📋 错误详情:', {
+      message: error.message,
+      response: error.response,
+      request: error.request
+    })
     ElMessage.error('获取数据失败，请稍后重试')
+    abnormalTasks.value = []
   } finally {
     loading.value = false
+  }
+}
+
+// 根据状态获取进度条样式
+const getStatusProgressBarStyle = (status) => {
+  const baseStyle = {
+    padding: '4px 8px',
+    borderRadius: '4px',
+    textAlign: 'center',
+    fontWeight: 'bold',
+    fontSize: '12px',
+    color: 'white'
+  }
+  
+  switch (status) {
+    case '未开始':
+      return {
+        ...baseStyle,
+        backgroundColor: '#909399',
+        boxShadow: '0 2px 4px rgba(144, 147, 153, 0.3)'
+      }
+    case '进行中':
+      return {
+        ...baseStyle,
+        backgroundColor: '#E6A23C',
+        boxShadow: '0 2px 4px rgba(230, 162, 60, 0.3)'
+      }
+    case '已完成':
+      return {
+        ...baseStyle,
+        backgroundColor: '#67C23A',
+        boxShadow: '0 2px 4px rgba(103, 194, 58, 0.3)'
+      }
+    case '已验收':
+      return {
+        ...baseStyle,
+        backgroundColor: '#E6A23C',
+        boxShadow: '0 2px 4px rgba(230, 162, 60, 0.3)'
+      }
+    default:
+      // 异常状态默认显示红色
+      return {
+        ...baseStyle,
+        backgroundColor: '#F56C6C',
+        boxShadow: '0 2px 4px rgba(245, 108, 108, 0.3)'
+      }
   }
 }
 

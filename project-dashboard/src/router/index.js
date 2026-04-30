@@ -16,13 +16,16 @@ import ProjectStatusSubtasksDetailView from '../views/project/ProjectStatusSubta
 import NcrFlowChart from '../views/ncr/NcrFlowChart.vue'
 import NcrStageDetail from '../views/ncr/NcrStageDetail.vue'
 import NcrItemDetail from '../views/ncr/NcrItemDetail.vue'
+import NcrCurrentNodeDetail from '../views/ncr/NcrCurrentNodeDetail.vue'
 import NcrHomePage from '../views/ncr/NcrHomePage.vue'
 import NcrDashboard from '../views/ncr/NcrDashboard.vue'
 import NcrEnhancedDashboard from '../views/ncr/NcrEnhancedDashboard.vue'
+import NcrProblemHierarchyDetail from '../views/ncr/NcrProblemHierarchyDetail.vue'
 import SscxStatistics from '../views/ncr/SscxStatistics.vue'
 import ExtensionTest from '../views/ExtensionTest.vue'
 import AbnormalOwnerDetailView from '../views/AbnormalOwnerDetailView.vue'
 import AbnormalTaskDetail from '../views/AbnormalTaskDetail.vue'
+import CustomerFeedback from '../views/kehu/CustomerFeedback.vue'
 
 const routes = [
   {
@@ -121,6 +124,12 @@ const routes = [
     props: true
   },
   {
+    path: '/ncr-current-node-detail/:currentNodes',
+    name: 'NcrCurrentNodeDetail',
+    component: NcrCurrentNodeDetail,
+    props: true
+  },
+  {
     path: '/ncr-home',
     name: 'NcrHomePage',
     component: NcrHomePage
@@ -135,6 +144,12 @@ const routes = [
     name: 'NcrEnhancedDashboard',
     component: NcrEnhancedDashboard,
     meta: { title: 'NCR管理' }
+  },
+  {
+    path: '/ncr-problem-hierarchy-detail/:level/:name',
+    name: 'NcrProblemHierarchyDetail',
+    component: NcrProblemHierarchyDetail,
+    props: true
   },
   {
     path: '/extension-test',
@@ -157,6 +172,12 @@ const routes = [
     name: 'AbnormalTaskDetail',
     component: AbnormalTaskDetail,
     props: true
+  },
+  {
+    path: '/customer-feedback',
+    name: 'CustomerFeedback',
+    component: CustomerFeedback,
+    meta: { title: '客户反馈管理' }
   }
 ]
 

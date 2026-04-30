@@ -16,10 +16,9 @@ export default defineConfig({
     open: true,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8001', // 使用127.0.0.1替代localhost
+        target: 'http://localhost:8001', // 本地后端服务（8001 端口）
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
-        secure: false // 允许HTTP请求
+        rewrite: (path) => path.replace(/^\/api/, '') // 去掉/api 前缀
       }
     },
     // 添加CSP头

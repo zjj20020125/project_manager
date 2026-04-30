@@ -1,13 +1,44 @@
 <template>
   <div class="ncr-enhanced-dashboard-container">
-    <!-- 页面标题和操作按钮 -->
+    <!-- 顶部导航栏 -->
+    <div style="position: fixed; top: 0; left: 0; right: 0; z-index: 1000; background: linear-gradient(135deg, #67C23A 0%, #81c784 100%); padding: 20px; box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);">
+      <div style="max-width: 1400px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <el-button 
+            type="success" 
+            @click="goToHome" 
+            class="back-button"
+            icon="ArrowLeft"
+            plain
+          >
+            <span class="button-text">返回首页</span>
+          </el-button>
+        </div>
+        
+        <div style="text-align: center; flex: 1;">
+          <h1 style="margin: 0; font-size: 28px; color: white; font-weight: bold; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);">
+            NCR 不符合项管理
+          </h1>
+          <p style="margin-top: 8px; color: rgba(255, 255, 255, 0.9); font-size: 14px;">结构件事业部质量管理系统</p>
+        </div>
+        
+        <div style="color: white; font-size: 16px; min-width: 120px; text-align: right;">
+          <div v-if="currentTime">{{ currentTime }}</div>
+          <div v-else>--</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 主内容区域，添加上边距避免被导航栏遮挡 -->
+    <div style="margin-top: 100px;">
+      <!-- 页面标题和操作按钮 -->
 
 
 
 
-    <!-- 统计概览卡片 - 增强版 -->
+      <!-- 统计概览卡片 - 增强版 -->
     <el-row :gutter="20" class="enhanced-stats-overview">
-      <el-col :span="4">
+      <el-col :span="6">
         <el-card class="stat-card enhanced" shadow="hover">
           <div class="stat-content">
             <div class="stat-icon" :style="{ backgroundColor: '#409EFF' }">
@@ -15,13 +46,13 @@
             </div>
             <div class="stat-info">
               <div class="stat-number">{{ totalNcrCount }}</div>
-              <div class="stat-label">NCR总数</div>
-              <div class="stat-trend positive">↑ 12%</div>
+              <div class="stat-label">NCR 总数</div>
+              <div class="stat-trend positive">↑ {{ totalTrend }}%</div>
             </div>
           </div>
         </el-card>
       </el-col>
-      <el-col :span="4">
+      <el-col :span="6">
         <el-card class="stat-card enhanced" shadow="hover">
           <div class="stat-content">
             <div class="stat-icon" :style="{ backgroundColor: '#67C23A' }">
@@ -30,12 +61,12 @@
             <div class="stat-info">
               <div class="stat-number">{{ completedCount }}</div>
               <div class="stat-label">已完成</div>
-              <div class="stat-trend positive">↑ 8%</div>
+              <div class="stat-trend positive">↑ {{ completedTrend }}%</div>
             </div>
           </div>
         </el-card>
       </el-col>
-      <el-col :span="4">
+      <el-col :span="6">
         <el-card class="stat-card enhanced" shadow="hover">
           <div class="stat-content">
             <div class="stat-icon" :style="{ backgroundColor: '#E6A23C' }">
@@ -44,49 +75,21 @@
             <div class="stat-info">
               <div class="stat-number">{{ pendingCount }}</div>
               <div class="stat-label">待处理</div>
-              <div class="stat-trend negative">↓ 5%</div>
+              <div class="stat-trend negative">↓ {{ pendingTrend }}%</div>
             </div>
           </div>
         </el-card>
       </el-col>
-      <el-col :span="4">
+      <el-col :span="6">
         <el-card class="stat-card enhanced" shadow="hover">
           <div class="stat-content">
             <div class="stat-icon" :style="{ backgroundColor: '#F56C6C' }">
-              <i class="el-icon-user"></i>
-            </div>
-            <div class="stat-info">
-              <div class="stat-number">{{ activeResponsibleCount }}</div>
-              <div class="stat-label">活跃责任人</div>
-              <div class="stat-trend neutral">→ 0%</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="4">
-        <el-card class="stat-card enhanced" shadow="hover">
-          <div class="stat-content">
-            <div class="stat-icon" :style="{ backgroundColor: '#909399' }">
               <i class="el-icon-star-on"></i>
             </div>
             <div class="stat-info">
-              <div class="stat-number">{{ highPriorityCount }}</div>
-              <div class="stat-label">高优先级</div>
-              <div class="stat-trend warning">⚠️ 15%</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="4">
-        <el-card class="stat-card enhanced" shadow="hover">
-          <div class="stat-content">
-            <div class="stat-icon" :style="{ backgroundColor: '#79bbff' }">
-              <i class="el-icon-timer"></i>
-            </div>
-            <div class="stat-info">
-              <div class="stat-number">{{ avgProcessingDays }}</div>
-              <div class="stat-label">平均处理天数</div>
-              <div class="stat-trend positive">↓ 2天</div>
+              <div class="stat-number">{{ completionRate }}</div>
+              <div class="stat-label">完成率</div>
+              <div class="stat-trend neutral">→ {{ completionTrend }}%</div>
             </div>
           </div>
         </el-card>
@@ -97,16 +100,16 @@
     <div class="charts-grid-container">
       <!-- 第一行图表 -->
       <el-row :gutter="15" class="chart-row">
-        <!-- 类型分布玫瑰图 -->
+        <!-- 发生阶段玫瑰图 -->
         <el-col :span="8">
           <el-card shadow="hover" class="enhanced-chart-card">
             <template #header>
               <div class="card-header">
-                <span>🔥 NCR类型分布玫瑰图</span>
+                <span>🔥 NCR发生阶段玫瑰图</span>
                 <el-tag type="primary" size="small">热点分析</el-tag>
               </div>
             </template>
-            <div ref="typeRoseRef" class="enhanced-chart-container" @click="goToTypeDetail"></div>
+            <div ref="typeRoseRef" class="enhanced-chart-container" style="cursor: pointer;"></div>
           </el-card>
         </el-col>
 
@@ -119,32 +122,32 @@
                 <el-tag type="success" size="small">全方位视角</el-tag>
               </div>
             </template>
-            <div ref="stageRadarRef" class="enhanced-chart-container"></div>
+            <div ref="stageRadarRef" class="enhanced-chart-container" style="cursor: pointer;"></div>
           </el-card>
         </el-col>
         
-        <!-- 优先级分布水球图 -->
+        <!-- 优先级分布旭日图 -->
         <el-col :span="8">
           <el-card shadow="hover" class="enhanced-chart-card">
             <template #header>
               <div class="card-header">
-                <span>💧 优先级分布水球图</span>
-                <el-tag type="warning" size="small">液态可视化</el-tag>
+                <span>☀️ 问题层级分布旭日图</span>
+                <el-tag type="danger" size="small">多层级分析</el-tag>
               </div>
             </template>
-            <div ref="priorityLiquidRef" class="enhanced-chart-container"></div>
+            <div ref="prioritySunburstRef" class="enhanced-chart-container"></div>
           </el-card>
         </el-col>
       </el-row>
 
       <!-- 第二行图表 -->
       <el-row :gutter="15" class="chart-row">
-        <!-- DQJD阶段分布瀑布图 -->
+        <!-- 当前节点分布瀑布图 -->
         <el-col :span="12">
           <el-card shadow="hover" class="enhanced-chart-card">
             <template #header>
               <div class="card-header">
-                <span> DQJD阶段分布瀑布图</span>
+                <span> 当前节点分布瀑布图</span>
                 <el-tag type="warning" size="small">累积效应</el-tag>
               </div>
             </template>
@@ -167,15 +170,15 @@
       </el-row>
     </div>
 
-    <!-- 新增：SSCX核心统计图表区域 -->
+    <!-- 新增：所属车型核心统计图表区域 -->
     <div class="charts-grid-container">
       <el-row :gutter="20" class="chart-row">
-        <!-- SSCX项目分类滚动表格 -->
+        <!-- 所属车型项目分类滚动表格 -->
         <el-col :span="12">
           <el-card shadow="hover" class="enhanced-chart-card">
             <template #header>
               <div class="card-header">
-                <span>📊 SSCX项目分类统计</span>
+                <span>📊 所属车型项目分类统计</span>
                 <el-tag type="primary" size="small">Top 15 排名</el-tag>
               </div>
             </template>
@@ -224,12 +227,12 @@
           </el-card>
         </el-col>
 
-        <!-- SSCX月度趋势折线图 -->
+        <!-- 所属车型月度趋势折线图 -->
         <el-col :span="12">
           <el-card shadow="hover" class="enhanced-chart-card">
             <template #header>
               <div class="card-header">
-                <span>📈 SSCX月度趋势分析</span>
+                <span>📈 所属车型月度趋势分析</span>
                 <el-tag type="success" size="small">时间序列</el-tag>
               </div>
             </template>
@@ -239,36 +242,7 @@
       </el-row>
     </div>
 
-    <!-- 新增：SSCX数据接口图表区域 -->
-    <div class="charts-grid-container">
-      <el-row :gutter="20" class="chart-row">
-        <!-- SSCX问题分类热力图 -->
-        <el-col :span="12">
-          <el-card shadow="hover" class="enhanced-chart-card">
-            <template #header>
-              <div class="card-header">
-                <span>📊 SSCX问题分类热力图</span>
-                <el-tag type="warning" size="small">分类分析</el-tag>
-              </div>
-            </template>
-            <div ref="sscxProblemHeatmapRef" class="enhanced-chart-container"></div>
-          </el-card>
-        </el-col>
-
-        <!-- SSCX处理时效散点图 -->
-        <el-col :span="12">
-          <el-card shadow="hover" class="enhanced-chart-card">
-            <template #header>
-              <div class="card-header">
-                <span>⏱️ SSCX处理时效散点图</span>
-                <el-tag type="danger" size="small">时效分析</el-tag>
-              </div>
-            </template>
-            <div ref="sscxProcessingScatterRef" class="enhanced-chart-container"></div>
-          </el-card>
-        </el-col>
-      </el-row>
-    </div>
+    
 
     <!-- 增强版NCR列表 -->
     <el-card class="enhanced-list-card" shadow="hover">
@@ -347,7 +321,11 @@
         </el-table-column>
         <el-table-column prop="dqjd" label="📊 当前阶段" width="120" sortable>
           <template #default="scope">
-            <el-tag :type="getCurrentStageTagType(scope.row.dqjd)">
+            <el-tag 
+              :type="getCurrentStageTagType(scope.row.dqjd)"
+              style="cursor: pointer;"
+              @click.stop="goToStageDetail(scope.row.dqjd)"
+            >
               {{ scope.row.dqjd }}
             </el-tag>
           </template>
@@ -407,11 +385,12 @@
         />
       </div>
     </el-card>
+      </div>
   </div>
 </template>
 
 <script>
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch, h } from 'vue';
 import * as echarts from 'echarts';
 import { 
   ElCard, 
@@ -430,7 +409,7 @@ import {
   ElButtonGroup
 } from 'element-plus';
 import { projectApi } from '../../api/index.js';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import {
   convertSscxStatisticsData,
   convertSscxTrendData,
@@ -458,26 +437,23 @@ export default {
   },
   setup() {
     const router = useRouter();
+    const route = useRoute();
 
     // 响应式数据
     const refreshLoading = ref(false);
     const ncrDetailsLoading = ref(false);
     const viewMode = ref('grid'); // grid 或 list
+    const currentTime = ref(''); // 当前时间
     
     // 图表引用
     const typeRoseRef = ref(null);
     const stageRadarRef = ref(null);
-    const priorityLiquidRef = ref(null);
+    const prioritySunburstRef = ref(null);  // 问题导向旭日图
     const dqjdWaterfallRef = ref(null);
     const responsibilityTreeRef = ref(null);
-    const unreviewedSankeyRef = ref(null);
-    const trendLineRef = ref(null);
-    // 新增：SSCX图表引用
+    // 新增：SSCX 图表引用
     const sscxTrendRef = ref(null);
-    // 新增：SSCX数据接口图表引用
-    const sscxProblemHeatmapRef = ref(null);
-    const sscxProcessingScatterRef = ref(null);
-
+    
     // 数据状态
     const ncrDetails = ref([]);
     const filteredNcrDetails = ref([]);
@@ -487,14 +463,14 @@ export default {
     const priorityDistributionData = ref([]);
     const dqjdData = ref([]);
     const responsibilityData = ref([]);
-    const unreviewedStageData = ref([]);
-    const trendData = ref([]);
-    // 新增：SSCX数据状态
+    // 新增：SSCX 数据状态
     const sscxData = ref([]);
     const sscxTrendData = ref([]);
-    // 新增：SSCX接口数据状态
+    // 新增：SSCX 接口数据状态
     const sscxInterfaceData = ref([]);
     const sscxProcessingData = ref([]);
+    // 新增：问题导向三层级统计数据
+    const problemHierarchyData = ref([]);
 
     // 筛选条件
     const filterStatus = ref('');
@@ -512,34 +488,21 @@ export default {
     let priorityLiquidChart = null;  // 改为标准图表
     let dqjdWaterfallChart = null;
     let responsibilityTreeChart = null;
-    let unreviewedSankeyChart = null;
-    let trendLineChart = null;
-    // 新增：SSCX图表实例
+    // 新增：SSCX 图表实例
     let sscxTrendChart = null;
-    // 新增：SSCX数据接口图表实例
-    let sscxProblemHeatmapChart = null;
-    let sscxProcessingScatterChart = null;
 
-    // 计算属性
-    const totalNcrCount = computed(() => ncrDetails.value.length);
-    const completedCount = computed(() => 
-      ncrDetails.value.filter(item => item.status === '已完成').length
-    );
-    const pendingCount = computed(() => 
-      ncrDetails.value.filter(item => item.status === '待处理').length
-    );
-    const activeResponsibleCount = computed(() => 
-      new Set(ncrDetails.value.map(item => item.wczz)).size
-    );
-    const highPriorityCount = computed(() => 
-      ncrDetails.value.filter(item => item.review_level === '高').length
-    );
-    const avgProcessingDays = computed(() => {
-      // 简化的平均处理天数计算
-      return Math.floor(Math.random() * 10) + 5;
-    });
-
-    // 新增：SSCX表格数据
+    // 计算属性 - 从后端 API 获取准确数据
+    const totalNcrCount = ref(0);
+    const completedCount = ref(0);
+    const pendingCount = ref(0);
+    const completionRate = ref('0%');
+    
+    // 趋势数据 (从后端 API 获取)
+    const totalTrend = ref(12);
+    const completedTrend = ref(8);
+    const pendingTrend = ref(5);
+    const completionTrend = ref(3);
+     // 新增：SSCX表格数据
     const sscxTableData = ref([]);
     
     // 新增：SSCX计算属性
@@ -555,6 +518,18 @@ export default {
     });
 
     // 方法定义
+    const updateTime = () => {
+      const now = new Date();
+      currentTime.value = now.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    };
+
     const refreshAllData = async () => {
       refreshLoading.value = true;
       try {
@@ -575,17 +550,21 @@ export default {
           responsibilityResponse,
           unreviewedResponse,
           ncrListResponse,
-          // SSCX核心接口数据获取
+          trendResponse,
+          ncrStatsResponse,  // 新增：NCR统计数据
+          // SSCX 核心接口数据获取
           sscxResponse,
           sscxTrendResponse,
-          sscxYearlyResponse
+          sscxYearlyResponse,
+          // 问题导向三层级统计
+          problemHierarchyResponse
         ] = await Promise.all([
           projectApi.getNcrTypeDistribution().catch(err => {
-            console.error('类型分布API失败:', err);
+            console.error('类型分布 API失败:', err);
             return [];
           }),
           projectApi.getNcrStageDistribution().catch(err => {
-            console.error('阶段分布API失败:', err);
+            console.error('阶段分布 API失败:', err);
             return [];
           }),
           projectApi.getDqjdWczzData().catch(err => {
@@ -593,18 +572,28 @@ export default {
             return { dqjdStats: [], wczzStats: [] };
           }),
           projectApi.getResponsibilityAnalysis().catch(err => {
-            console.error('责任分析API失败:', err);
+            console.error('责任分析 API失败:', err);
             return [];
           }),
           projectApi.getUnreviewedStageResponsibility().catch(err => {
-            console.error('未评审责任API失败:', err);
+            console.error('未评审责任 API失败:', err);
             return [];
           }),
           projectApi.getNcrList().catch(err => {
-            console.error('NCR列表API失败:', err);
-            return [];
+            console.error('NCR 列表 API 失败:', err);
+            return { data: [], total: 0 };
           }),
-          // SSCX核心接口调用（带错误处理）
+          // 新增：获取趋势数据
+          projectApi.getNcrStatsTrend().catch(err => {
+            console.error('趋势数据 API 失败:', err);
+            return null;
+          }),
+          // 新增：获取NCR统计数据（用于顶部卡片）
+          projectApi.getNcrStats().catch(err => {
+            console.error('NCR 统计数据 API 失败:', err);
+            return { total: 0, completed: 0, pending: 0, completion_rate: '0%' };
+          }),
+          // SSCX 核心接口调用（带错误处理）
           projectApi.getSscxStatistics().catch(err => {
             console.error('SSCX统计API失败:', err);
             return [];
@@ -613,23 +602,47 @@ export default {
             console.error('SSCX趋势API失败:', err);
             return [];
           }),
-          // 新增：SSCX年度统计接口（前15名）
+          // 新增：SSCX 年度统计接口（前 15 名）
           projectApi.getSscxYearlyStats().catch(err => {
-            console.error('SSCX年度统计API失败:', err);
+            console.error('SSCX 年度统计 API 失败:', err);
+            return [];
+          }),
+          // 问题导向三层级统计
+          projectApi.getNcrProblemHierarchyStats().catch(err => {
+            console.error('问题导向统计 API 失败:', err);
             return [];
           })
         ]);
 
-        console.log('=== API响应汇总 ===');
+        console.log('=== API 响应汇总 ===');
         console.log('类型分布:', typeResponse);
         console.log('阶段分布:', stageResponse);
         console.log('DQJD/WCZZ:', dqjdWczzResponse);
         console.log('责任分析:', responsibilityResponse);
         console.log('未评审责任:', unreviewedResponse);
-        console.log('NCR列表:', ncrListResponse);
-        console.log('SSCX统计:', sscxResponse);
-        console.log('SSCX趋势:', sscxTrendResponse);
+        console.log('NCR 列表:', ncrListResponse);
+        console.log('趋势数据:', trendResponse);
+        console.log('SSCX 统计:', sscxResponse);
+        console.log('SSCX 趋势:', sscxTrendResponse);
+        console.log('问题导向统计:', problemHierarchyResponse);
         console.log('==================');
+
+        // 更新趋势数据
+        if (trendResponse) {
+          totalTrend.value = trendResponse.total_trend || 12;
+          completedTrend.value = trendResponse.completed_trend || 8;
+          pendingTrend.value = trendResponse.pending_trend || 5;
+          completionTrend.value = trendResponse.completion_rate_trend || 3;
+        }
+        
+        // 新增：更新NCR统计数据（顶部卡片）
+        if (ncrStatsResponse) {
+          console.log('✅ NCR统计数据:', ncrStatsResponse);
+          totalNcrCount.value = ncrStatsResponse.total || 0;
+          completedCount.value = ncrStatsResponse.completed || 0;
+          pendingCount.value = ncrStatsResponse.pending || 0;
+          completionRate.value = ncrStatsResponse.completion_rate || '0%';
+        }
 
         // 处理各种数据（添加模拟数据降级）
         if (Array.isArray(typeResponse) && typeResponse.length > 0) {
@@ -703,22 +716,16 @@ export default {
         }
 
         if (Array.isArray(unreviewedResponse) && unreviewedResponse.length > 0) {
-          unreviewedStageData.value = unreviewedResponse;
-          initUnreviewedSankeyChart(unreviewedResponse);
-        } else {
-          // 使用模拟数据
-          const mockUnreviewedData = [
-            { name: '审核员A', value: 8 },
-            { name: '审核员B', value: 6 },
-            { name: '审核员C', value: 5 },
-            { name: '审核员D', value: 4 },
-            { name: '审核员E', value: 3 }
-          ];
-          unreviewedStageData.value = mockUnreviewedData;
-          initUnreviewedSankeyChart(mockUnreviewedData);
+          console.log('未评审责任数据:', unreviewedResponse);
+          // 数据已获取，但当前版本不展示
         }
 
-        if (Array.isArray(ncrListResponse) && ncrListResponse.length > 0) {
+        if (ncrListResponse && Array.isArray(ncrListResponse.data) && ncrListResponse.data.length > 0) {
+          ncrDetails.value = ncrListResponse.data;
+          totalItems.value = ncrListResponse.total || ncrListResponse.data.length;
+          applyFilters();
+        } else if (Array.isArray(ncrListResponse) && ncrListResponse.length > 0) {
+          // 兼容旧格式（直接返回数组）
           ncrDetails.value = ncrListResponse;
           totalItems.value = ncrListResponse.length;
           applyFilters();
@@ -743,11 +750,70 @@ export default {
           applyFilters();
         }
 
-        // 新增：处理SSCX数据（优先使用年度统计数据）
-        console.log('🔄 开始处理SSCX数据...');
-        console.log('原始SSCX统计响应类型:', typeof sscxResponse, '值:', sscxResponse);
-        console.log('原始SSCX趋势响应类型:', typeof sscxTrendResponse, '值:', sscxTrendResponse);
-        console.log('SSCX年度统计响应类型:', typeof sscxYearlyResponse, '值:', sscxYearlyResponse);
+        // 新增：处理 SSCX 数据（优先使用年度统计数据）
+        console.log('🔄 开始处理 SSCX 数据...');
+        console.log('原始 SSCX 统计响应类型:', typeof sscxResponse, '值:', sscxResponse);
+        console.log('原始 SSCX 趋势响应类型:', typeof sscxTrendResponse, '值:', sscxTrendResponse);
+        console.log('SSCX 年度统计响应类型:', typeof sscxYearlyResponse, '值:', sscxYearlyResponse);
+                
+        // 处理问题导向三层级统计数据
+        if (Array.isArray(problemHierarchyResponse) && problemHierarchyResponse.length > 0) {
+          console.log('✅ 问题导向统计数据获取成功，层级数:', problemHierarchyResponse.length);
+          problemHierarchyData.value = problemHierarchyResponse;
+          initPrioritySunburstChart(problemHierarchyResponse);
+        } else {
+          console.warn('⚠️ 问题导向统计数据为空或格式无效，使用模拟数据');
+          // 使用模拟数据
+          const mockProblemData = [
+            {
+              name: '设计问题',
+              value: 50,
+              children: [
+                {
+                  name: '结构设计',
+                  value: 30,
+                  children: [
+                    { name: '强度不足', value: 18 },
+                    { name: '尺寸错误', value: 12 }
+                  ]
+                },
+                {
+                  name: '电气设计',
+                  value: 20,
+                  children: [
+                    { name: '线路布局', value: 12 },
+                    { name: '元件选型', value: 8 }
+                  ]
+                }
+              ]
+            },
+            {
+              name: '制造问题',
+              value: 40,
+              children: [
+                {
+                  name: '加工工艺',
+                  value: 25,
+                  children: [
+                    { name: '焊接缺陷', value: 15 },
+                    { name: '表面处理', value: 10 }
+                  ]
+                },
+                {
+                  name: '装配工艺',
+                  value: 15,
+                  children: [
+                    { name: '配合不当', value: 9 },
+                    { name: '紧固不良', value: 6 }
+                  ]
+                }
+              ]
+            }
+          ];
+          problemHierarchyData.value = mockProblemData;
+          initPrioritySunburstChart(mockProblemData);
+          ElMessage.warning('问题导向统计使用模拟数据展示');
+        }
         
         // 优先使用新的年度统计数据接口
         try {
@@ -897,18 +963,18 @@ export default {
     // 图表初始化方法
     const initTypeRoseChart = (data) => {
       if (!typeRoseRef.value || !data || data.length === 0) return;
-      
+          
       if (typeRoseChart) typeRoseChart.dispose();
       typeRoseChart = echarts.init(typeRoseRef.value);
-      
+          
       const chartData = data.map(item => ({
         name: item.name || '未知类型',
         value: item.value || 0
       })).filter(item => item.value > 0);
-
+    
       const option = {
         title: {
-          text: 'NCR类型分布',
+          text: 'NCR 类型分布',
           left: 'center',
           top: 10,
           textStyle: { fontSize: 14, fontWeight: 'bold' }
@@ -919,7 +985,7 @@ export default {
         },
         legend: { bottom: 10, type: 'scroll' },
         series: [{
-          name: 'NCR类型',
+          name: 'NCR 类型',
           type: 'pie',
           roseType: 'radius',
           radius: ['30%', '70%'],
@@ -935,7 +1001,13 @@ export default {
           label: { show: true, formatter: '{b}: {d}%' }
         }]
       };
-      
+          
+      // 添加点击事件
+      typeRoseChart.on('click', (params) => {
+        console.log('🔥 点击发生阶段玫瑰图:', params.name);
+        goToStageDetail(params.name);
+      });
+          
       typeRoseChart.setOption(option);
     };
 
@@ -979,82 +1051,113 @@ export default {
         }]
       };
       
+      // 添加点击事件
+      stageRadarChart.on('click', (params) => {
+        if (params.componentType === 'radar' && params.name) {
+          console.log('📡 点击发生阶段雷达图:', params.name);
+          goToStageDetail(params.name);
+        }
+      });
+      
       stageRadarChart.setOption(option);
     };
 
-    const initPriorityLiquidChart = (data) => {
-      if (!priorityLiquidRef.value || !data || data.length === 0) return;
-      
+    const initPrioritySunburstChart = (data) => {
+      if (!prioritySunburstRef.value || !data || data.length === 0) return;
+          
       if (priorityLiquidChart) priorityLiquidChart.dispose();
-      priorityLiquidChart = echarts.init(priorityLiquidRef.value);
-      
-      const total = data.reduce((sum, item) => sum + item.value, 0);
-      const highPriority = data.find(item => item.name === '高') || { value: 0 };
-      const percentage = total > 0 ? (highPriority.value / total * 100).toFixed(1) : 0;
-
-      // 使用标准饼图替代liquidFill效果
+      priorityLiquidChart = echarts.init(prioritySunburstRef.value);
+          
+      // 直接使用问题导向三层级统计数据
+      // 数据结构：第一层 wtdx（问题导向），第二层 wtfl（问题分类），第三层 wtflxf（问题分类细分）
       const option = {
-        title: {
-          text: '高优先级占比',
-          left: 'center',
-          top: 10,
-          textStyle: { 
-            fontSize: 14, 
-            fontWeight: 'bold',
-            color: '#333'
-          }
+        tooltip: {
+          trigger: 'item',
+          formatter: '{b}: {c}'
         },
-        series: [{
-          type: 'gauge',
-          startAngle: 180,
-          endAngle: 0,
-          center: ['50%', '75%'],
-          radius: '90%',
-          min: 0,
-          max: 100,
-          splitNumber: 5,
-          axisLine: {
-            lineStyle: {
-              width: 15,
-              color: [
-                [percentage / 100, '#5470c6'],
-                [1, '#E6EBF8']
-              ]
+        series: {
+          type: 'sunburst',
+          data: data,
+          radius: [0, '90%'],
+          label: {
+            rotate: 'radial',
+            fontSize: 10,
+            color: '#fff'
+          },
+          emphasis: {
+            focus: 'ancestor'
+          },
+          levels: [
+            {},
+            {
+              r0: '0%',
+              r: '40%',
+              label: { rotate: 'tangential' }
+            },
+            {
+              r0: '40%',
+              r: '70%',
+              label: { align: 'right' }
+            },
+            {
+              r0: '70%',
+              r: '90%',
+              label: { align: 'right' }
             }
-          },
-          pointer: { show: false },
-          axisTick: { show: false },
-          splitLine: { show: false },
-          axisLabel: { show: false },
-          detail: {
-            show: true,
-            formatter: `{value}%\n高优先级`,
-            offsetCenter: [0, '-20%'],
-            fontSize: 16,
-            fontWeight: 'bold',
-            color: '#5470c6'
-          },
-          data: [{ value: parseFloat(percentage) }]
-        }]
+          ]
+        }
       };
       
+      // 添加点击事件 - 跳转到问题层级详情页面
+      priorityLiquidChart.on('click', (params) => {
+        if (params.componentType === 'series' && params.data) {
+          console.log('🔍 点击问题层级:', params.data);
+          
+          // 确定层级类型
+          let level = '';
+          let levelText = '';
+          
+          // 根据数据结构判断层级
+          if (params.treePathInfo) {
+            const pathLength = params.treePathInfo.length;
+            if (pathLength === 2) {
+              // 第一层：问题导向 (wtdx)
+              level = 'wtdx';
+              levelText = '问题导向';
+            } else if (pathLength === 3) {
+              // 第二层：问题分类 (wtfl)
+              level = 'wtfl';
+              levelText = '问题分类';
+            } else if (pathLength === 4) {
+              // 第三层：问题分类细分 (wtflxf)
+              level = 'wtflxf';
+              levelText = '问题分类细分';
+            }
+          }
+          
+          if (level && params.name) {
+            goToProblemHierarchyDetail(level, params.name, levelText);
+          }
+        }
+      });
+          
       priorityLiquidChart.setOption(option);
     };
 
     const initDqjdWaterfallChart = (data) => {
       if (!dqjdWaterfallRef.value || !data || data.length === 0) return;
-      
+          
       if (dqjdWaterfallChart) dqjdWaterfallChart.dispose();
       dqjdWaterfallChart = echarts.init(dqjdWaterfallRef.value);
-      
+          
       const chartData = data.map(item => ({
         name: item.name,
         value: item.value
       }));
-
+    
       const option = {
         title: {
-          text: 'DQJD阶段分布',
+          text: '当前阶段分布',
           left: 'center',
           top: 10,
           textStyle: { fontSize: 14, fontWeight: 'bold' }
@@ -1086,10 +1189,25 @@ export default {
               const colors = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de'];
               return colors[params.dataIndex % colors.length];
             }
+          },
+          emphasis: {
+            focus: 'series',
+            itemStyle: {
+              shadowBlur: 10,
+              shadowOffsetX: 0,
+              shadowColor: 'rgba(0, 0, 0, 0.3)'
+            }
           }
         }]
       };
-      
+          
+      // 添加点击事件
+      dqjdWaterfallChart.on('click', (params) => {
+        if (params.componentType === 'series' && params.name) {
+          goToCurrentNodeDetail(params.name);
+        }
+      });
+          
       dqjdWaterfallChart.setOption(option);
     };
 
@@ -1142,7 +1260,19 @@ export default {
           data: chartData.map(item => item.name),
           axisLabel: {
             interval: 0,
-            rotate: 0
+            rotate: 0,
+            formatter: (value) => {
+              // 将人员名称包装为可点击的链接样式
+              return `{link|${value}}`;
+            },
+            rich: {
+              link: {
+                color: '#667eea',
+                textDecoration: 'underline',
+                cursor: 'pointer',
+                fontWeight: 'bold'
+              }
+            }
           }
         },
         series: [{
@@ -1174,102 +1304,74 @@ export default {
       };
       
       responsibilityTreeChart.setOption(option);
-    };
-
-    const initUnreviewedSankeyChart = (data) => {
-      if (!unreviewedSankeyRef.value || !data || data.length === 0) return;
       
-      if (unreviewedSankeyChart) unreviewedSankeyChart.dispose();
-      unreviewedSankeyChart = echarts.init(unreviewedSankeyRef.value);
-      
-      const nodes = [
-        { name: '未评审' },
-        ...data.slice(0, 5).map(item => ({ name: item.name }))
-      ];
-      
-      const links = data.slice(0, 5).map(item => ({
-        source: '未评审',
-        target: item.name,
-        value: item.value
-      }));
-
-      const option = {
-        title: {
-          text: '责任人员流向',
-          left: 'center',
-          top: 10,
-          textStyle: { fontSize: 14, fontWeight: 'bold' }
-        },
-        tooltip: {
-          trigger: 'item',
-          triggerOn: 'mousemove'
-        },
-        series: [{
-          type: 'sankey',
-          layout: 'none',
-          data: nodes,
-          links: links,
-          itemStyle: {
-            borderWidth: 1,
-            borderColor: '#aaa'
-          },
-          lineStyle: {
-            color: 'source',
-            curveness: 0.5
+      // 添加点击事件监听
+      responsibilityTreeChart.on('click', (params) => {
+        if (params.componentType === 'yAxis') {
+          // 点击了 Y 轴上的人员名称
+          const responsiblePerson = params.name;
+          console.log('🖱️ 点击责任人员:', responsiblePerson);
+          
+          try {
+            // 显示加载提示
+            ElMessage.info(`正在查看 ${responsiblePerson} 的未处理单据...`);
+            
+            // 筛选该员工的未处理单据
+            const pendingTasks = ncrDetails.value.filter(item => {
+              const wczz = item.wczz || '';
+              const dqjd = item.dqjd || '';
+              // 检查是否包含该员工姓名且未完成
+              const isResponsible = wczz.includes(responsiblePerson);
+              const isPending = !dqjd.includes('完成') && !dqjd.includes('关闭');
+              return isResponsible && isPending;
+            });
+            
+            console.log(`📋 ${responsiblePerson} 的未处理单据数量:`, pendingTasks.length);
+            
+            if (pendingTasks.length === 0) {
+              ElMessage.success(`${responsiblePerson} 目前没有未处理单据`);
+              return;
+            }
+            
+            // 跳转到详情页 (传递筛选参数)
+            router.push({
+              name: 'NcrEnhancedDashboard',
+              query: {
+                responsiblePerson: responsiblePerson,
+                status: 'pending'
+              }
+            }).catch(err => {
+              // 忽略路由跳转错误
+              console.warn('路由跳转警告:', err);
+            });
+            
+            // 使用 Element Plus 的通知组件显示详情
+            ElNotification({
+              title: '未处理单据',
+              message: h('div', { style: { lineHeight: '20px' } }, [
+                h('div', null, `责任人员：${responsiblePerson}`),
+                h('div', null, `未处理单据数：${pendingTasks.length}`),
+                h('el-button', {
+                  type: 'primary',
+                  size: 'small',
+                  onClick: () => {
+                    // 可以在这里展开显示详细列表
+                    console.log('查看详细列表');
+                  }
+                }, '查看详细')
+              ]),
+              duration: 0,
+              position: 'bottom-right'
+            });
+          } catch (error) {
+            console.error('💥 处理责任人员点击失败:', error);
+            ElMessage.error('操作失败：' + error.message);
           }
-        }]
-      };
-      
-      unreviewedSankeyChart.setOption(option);
+        }
+      });
     };
-
-    const initTrendLineChart = (data) => {
-      if (!trendLineRef.value || !data || data.length === 0) return;
-      
-      if (trendLineChart) trendLineChart.dispose();
-      trendLineChart = echarts.init(trendLineRef.value);
-      
-      const months = ['1月', '2月', '3月', '4月', '5月', '6月'];
-      const values = [12, 18, 15, 20, 25, 18];
-
-      const option = {
-        title: {
-          text: '月度趋势',
-          left: 'center',
-          top: 10,
-          textStyle: { fontSize: 12, fontWeight: 'bold' }
-        },
-        tooltip: {
-          trigger: 'axis'
-        },
-        xAxis: {
-          type: 'category',
-          data: months
-        },
-        yAxis: {
-          type: 'value'
-        },
-        series: [{
-          data: values,
-          type: 'line',
-          smooth: true,
-          itemStyle: { color: '#5470c6' },
-          areaStyle: { opacity: 0.3 }
-        }]
-      };
-      
-      trendLineChart.setOption(option);
-    };
-
-    // 新增：SSCX饼图初始化（使用现代化配置）
-    // 注意：此方法已废弃，因为已改为表格展示
-    /*
-    const initSscxPieChart = (data) => {
-      // 已废弃的方法内容...
-    };
-    */
-
-    // 修改：SSCX表格数据更新方法
+    
+    // 修改：SSCX 表格数据更新方法
     const updateSscxTableData = (data) => {
       try {
         console.log('📋 开始更新SSCX表格数据，原始数据:', data);
@@ -1428,21 +1530,13 @@ export default {
         { name: '低', value: priorityCount['低'] }
       ];
       
-      initPriorityLiquidChart(priorityDistributionData.value);
+      initPrioritySunburstChart(priorityDistributionData.value);
     };
 
-    const processTrendData = (ncrList) => {
-      // 简化的趋势数据生成
-      const months = ['1月', '2月', '3月', '4月', '5月', '6月'];
-      const values = [12, 18, 15, 20, 25, 18];
-      
-      trendData.value = months.map((month, index) => ({
-        month,
-        value: values[index]
-      }));
-      
-      initTrendLineChart(trendData.value);
-    };
+        // 简化的趋势数据处理，当前版本不使用
+        const processTrendData = (ncrList) => {
+          // 保留函数但不调用
+        };
 
     // 筛选和分页方法
     const applyFilters = () => {
@@ -1557,162 +1651,7 @@ export default {
       });
       return data;
     };
-
-    // 新增：SSCX问题分类热力图初始化
-    const initSscxProblemHeatmapChart = (data) => {
-      if (!sscxProblemHeatmapRef.value) return;
-      
-      if (sscxProblemHeatmapChart) sscxProblemHeatmapChart.dispose();
-      sscxProblemHeatmapChart = echarts.init(sscxProblemHeatmapRef.value);
-      
-      const categories = ['质量问题', '工艺问题', '材料问题', '设备问题', '人员问题'];
-      const subCategories = ['类型A', '类型B', '类型C', '类型D', '类型E'];
-      const severities = ['高', '中', '低'];
-      
-      const option = {
-        title: {
-          text: 'SSCX问题分类热力图',
-          left: 'center',
-          top: 10,
-          textStyle: { fontSize: 14, fontWeight: 'bold' }
-        },
-        tooltip: {
-          position: 'top',
-          formatter: (params) => {
-            return `
-              <div>
-                <strong>${categories[params.value[0]]}</strong><br/>
-                子分类: ${subCategories[params.value[1]]}<br/>
-                严重程度: ${severities[params.value[2]]}<br/>
-                数量: ${params.value[3]}项
-              </div>
-            `;
-          }
-        },
-        grid: {
-          height: '60%',
-          top: '20%',
-          left: '15%',
-          right: '10%'
-        },
-        xAxis: {
-          type: 'category',
-          data: subCategories,
-          splitArea: { show: true }
-        },
-        yAxis: {
-          type: 'category',
-          data: categories,
-          splitArea: { show: true }
-        },
-        visualMap: {
-          min: 0,
-          max: 35,
-          calculable: true,
-          orient: 'horizontal',
-          left: 'center',
-          bottom: '5%',
-          inRange: {
-            color: ['#e0f3db', '#a8ddb5', '#7bccc4', '#43a2ca', '#0868ac']
-          }
-        },
-        series: [{
-          name: '问题数量',
-          type: 'heatmap',
-          data: data,
-          label: {
-            show: true
-          },
-          emphasis: {
-            itemStyle: {
-              shadowBlur: 10,
-              shadowColor: 'rgba(0, 0, 0, 0.5)'
-            }
-          }
-        }]
-      };
-      
-      sscxProblemHeatmapChart.setOption(option);
-    };
-
-    // 新增：SSCX处理时效散点图初始化
-    const initSscxProcessingScatterChart = (data) => {
-      if (!sscxProcessingScatterRef.value) return;
-      
-      if (sscxProcessingScatterChart) sscxProcessingScatterChart.dispose();
-      sscxProcessingScatterChart = echarts.init(sscxProcessingScatterRef.value);
-      
-      const categories = ['质量问题', '工艺问题', '材料问题', '设备问题', '人员问题'];
-      const statusColors = {
-        '已完成': '#52c41a',
-        '处理中': '#1890ff',
-        '待处理': '#faad14'
-      };
-      
-      const seriesData = {};
-      data.forEach(item => {
-        if (!seriesData[item[3]]) {
-          seriesData[item[3]] = [];
-        }
-        seriesData[item[3]].push({
-          value: [item[0], item[1]],
-          symbolSize: item[4],
-          category: item[2],
-          status: item[3]
-        });
-      });
-      
-      const series = Object.keys(seriesData).map(status => ({
-        name: status,
-        type: 'scatter',
-        data: seriesData[status],
-        itemStyle: {
-          color: statusColors[status] || '#999'
-        },
-        emphasis: {
-          focus: 'series'
-        }
-      }));
-      
-      const option = {
-        title: {
-          text: 'SSCX处理时效散点图',
-          left: 'center',
-          top: 10,
-          textStyle: { fontSize: 14, fontWeight: 'bold' }
-        },
-        tooltip: {
-          trigger: 'item',
-          formatter: (params) => {
-            return `
-              <div>
-                <strong>${params.data.category}</strong><br/>
-                状态: ${params.seriesName}<br/>
-                处理时间: ${params.value[1]}天<br/>
-                数量: ${Math.floor(params.data.symbolSize / 20)}项
-              </div>
-            `;
-          }
-        },
-        legend: {
-          data: Object.keys(statusColors),
-          bottom: 10
-        },
-        xAxis: {
-          type: 'category',
-          data: categories,
-          name: '问题分类'
-        },
-        yAxis: {
-          type: 'value',
-          name: '处理时间(天)'
-        },
-        series: series
-      };
-      
-      sscxProcessingScatterChart.setOption(option);
-    };
-
+    
     const updatePaginatedData = () => {
       const start = (currentPage.value - 1) * pageSize.value;
       const end = start + pageSize.value;
@@ -1793,14 +1732,69 @@ export default {
       });
     };
 
-    const goToTypeDetail = () => {
-      router.push({ name: 'NcrTypeDetail' });
+    // 跳转到阶段详情页
+    const goToStageDetail = (stage) => {
+      if (!stage) {
+        ElMessage.warning('阶段信息为空');
+        return;
+      }
+      
+      // 显示跳转提示
+      ElMessage.success({
+        message: `正在跳转到【${stage}】阶段详情...`,
+        type: 'success',
+        duration: 1500
+      });
+      
+      router.push({
+        name: 'NcrStageDetail',
+        params: { stage: stage }
+      });
     };
 
-    const quickEdit = (row) => {
-      ElMessage.info(`编辑功能开发中: ${row.process_no}`);
+    // 跳转到当前节点详情页
+    const goToCurrentNodeDetail = (nodeName) => {
+      if (!nodeName) {
+        ElMessage.warning('节点信息为空');
+        return;
+      }
+      
+      // 显示跳转提示
+      ElMessage.success({
+        message: `正在跳转到【${nodeName}】节点详情...`,
+        type: 'success',
+        duration: 1500
+      });
+      
+      router.push({
+        name: 'NcrCurrentNodeDetail',
+        params: { currentNodes: nodeName }
+      });
     };
-
+    
+    // 跳转到问题层级详情页
+    const goToProblemHierarchyDetail = (level, name, levelText) => {
+      if (!level || !name) {
+        ElMessage.warning('层级信息不完整');
+        return;
+      }
+      
+      // 显示跳转提示
+      ElMessage.success({
+        message: `正在查看【${levelText} - ${name}】的 NCR 列表...`,
+        type: 'success',
+        duration: 1500
+      });
+      
+      router.push({
+        name: 'NcrProblemHierarchyDetail',
+        params: { 
+          level: level,
+          name: encodeURIComponent(name)  // URL编码，处理特殊字符
+        }
+      });
+    };
+    
     // 标签类型方法
     const getStageTagType = (stage) => {
       const stageMap = {
@@ -1858,24 +1852,53 @@ export default {
 
     // 生命周期钩子
     onMounted(() => {
+      // 初始化时间
+      updateTime();
+      // 每秒更新时间
+      const timeInterval = setInterval(updateTime, 1000);
+      
+      // 添加错误监听，捕获浏览器扩展干扰
+      const handleError = (error) => {
+        if (error.message && error.message.includes('runtime.lastError')) {
+          console.warn('检测到浏览器扩展干扰，已忽略:', error);
+          // 不阻断程序运行
+        }
+      };
+      
+      window.addEventListener('error', handleError);
+      
       fetchData();
       window.addEventListener('resize', handleResize);
+      
+      // 检查 URL 参数，如果有责任人员的筛选条件，自动筛选
+      if (route.query.responsiblePerson) {
+        const personName = route.query.responsiblePerson;
+        ElMessage.success(`正在查看 ${personName} 的未处理单据`);
+        
+        // 自动设置筛选条件
+        searchKeyword.value = personName;
+        applyFilters();
+      }
+      
+      // 清理定时器
+      return () => {
+        if (timeInterval) clearInterval(timeInterval);
+        window.removeEventListener('error', handleError);
+      };
     });
 
     onUnmounted(() => {
       window.removeEventListener('resize', handleResize);
       // 清理所有图表实例
       [typeRoseChart, stageRadarChart, priorityLiquidChart, 
-       dqjdWaterfallChart, responsibilityTreeChart, unreviewedSankeyChart,
-       trendLineChart, sscxTrendChart, sscxProblemHeatmapChart, sscxProcessingScatterChart].forEach(chart => {
+       dqjdWaterfallChart, responsibilityTreeChart, sscxTrendChart].forEach(chart => {
         if (chart) chart.dispose();
       });
     });
 
     const handleResize = () => {
       [typeRoseChart, stageRadarChart, priorityLiquidChart, 
-       dqjdWaterfallChart, responsibilityTreeChart, unreviewedSankeyChart, 
-       trendLineChart, sscxTrendChart]
+       dqjdWaterfallChart, responsibilityTreeChart, sscxTrendChart]
         .forEach(chart => {
           if (chart) chart.resize();
         });
@@ -1891,6 +1914,7 @@ export default {
       refreshLoading,
       ncrDetailsLoading,
       viewMode,
+      currentTime, // 当前时间
       filterStatus,
       filterPriority,
       searchKeyword,
@@ -1907,8 +1931,6 @@ export default {
       priorityDistributionData,
       dqjdData,
       responsibilityData,
-      unreviewedStageData,
-      trendData,
       sscxData,
       sscxTrendData,
       
@@ -1916,25 +1938,24 @@ export default {
       totalNcrCount,
       completedCount,
       pendingCount,
-      activeResponsibleCount,
-      highPriorityCount,
-      avgProcessingDays,
+      completionRate,
+      totalTrend,
+      completedTrend,
+      pendingTrend,
+      completionTrend,
       sscxTotalCount,
       topSscxCategory,
       
       // 图表引用
       typeRoseRef,
       stageRadarRef,
-      priorityLiquidRef,
+      prioritySunburstRef,
       dqjdWaterfallRef,
       responsibilityTreeRef,
-      unreviewedSankeyRef,
-      trendLineRef,
       sscxTrendRef,
-      sscxProblemHeatmapRef,
-      sscxProcessingScatterRef,
       
       // 方法
+      updateTime, // 更新时间
       refreshAllData,
       handleSearch,
       resetFilters,
@@ -1942,8 +1963,9 @@ export default {
       exportData,
       goToHome,
       goToNcrDetail,
-      goToTypeDetail,
-      quickEdit,
+      goToStageDetail,
+      goToCurrentNodeDetail,
+      goToProblemHierarchyDetail,
       handlePageSizeChange,
       handlePageChange,
       getStageTagType,
@@ -1951,13 +1973,7 @@ export default {
       getPriorityTagType,
       getStatusTagType,
       applyFilters,
-      // 新增SSCX方法
-      fetchSscxInterfaceData,
-      fetchSscxProcessingData,
-      generateMockProblemHeatmapData,
-      generateMockProcessingScatterData,
-      initSscxProblemHeatmapChart,
-      initSscxProcessingScatterChart,
+      // 新增 SSCX 方法
       initSscxTrendChart,
       updateSscxTableData,
       getRankTagType,
@@ -2085,11 +2101,16 @@ export default {
   border-radius: 12px;
   overflow: hidden;
   transition: all 0.3s ease;
+  /* 添加渐变背景 */
+  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
 }
 
 .enhanced-chart-card:hover {
   transform: translateY(-3px);
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+  /* 悬停时增强背景效果 */
+  background: linear-gradient(135deg, #e8ecf1 0%, #d9e0e8 100%);
 }
 
 .card-header {
@@ -2105,7 +2126,7 @@ export default {
   height: 320px;
 }
 
-/* SSCX表格容器样式 */
+/* 所属车型表格容器样式 */
 .sscx-table-container {
   padding: 10px;
   height: 320px;
@@ -2184,7 +2205,7 @@ export default {
   background-color: #f5f7fa;
 }
 
-/* 新增：SSCX统计模块样式 */
+/* 新增：所属车型统计模块样式 */
 .sscx-overview {
   display: flex;
   justify-content: space-around;
@@ -2213,7 +2234,7 @@ export default {
   display: block;
 }
 
-/* SSCX图表摘要样式 */
+/* 所属车型图表摘要样式 */
 .chart-summary {
   margin-top: 15px;
   padding: 12px;

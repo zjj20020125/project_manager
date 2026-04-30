@@ -4,26 +4,37 @@
       <h1 style="font-size: 36px; color: #333; margin-bottom: 20px; font-weight: bold;">结构件事业部管理系统</h1>
       <p style="font-size: 18px; color: #666; margin-bottom: 50px;">请选择您要访问的管理模块</p>
       
-      <div class="button-group" style="display: flex; justify-content: center; gap: 40px; flex-wrap: wrap;">
+      <div class="button-group" style="display: flex; justify-content: center; gap: 30px; flex-wrap: nowrap; align-items: center;">
         <!-- 项目管理按钮 -->
         <div class="button-card" style="text-align: center; transition: transform 0.3s ease;">
           <div @click="goToProjectManagement" 
                class="nav-button" 
-               style="background: linear-gradient(135deg, #409EFF 0%, #4d9eff 100%); color: white; padding: 30px; border-radius: 15px; cursor: pointer; box-shadow: 0 10px 20px rgba(64, 158, 255, 0.3); width: 220px; height: 220px; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.3s ease; border: none;">
-            <div style="font-size: 60px; margin-bottom: 20px;">📊</div>
-            <h3 style="font-size: 22px; margin: 10px 0 5px 0; color: white; font-weight: 600;">项目管理</h3>
-            <p style="font-size: 14px; color: rgba(255,255,255,0.9); margin: 0;">Project Management</p>
+               style="background: linear-gradient(135deg, #409EFF 0%, #4d9eff 100%); color: white; padding: 20px; border-radius: 15px; cursor: pointer; box-shadow: 0 10px 20px rgba(64, 158, 255, 0.3); width: 180px; height: 180px; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.3s ease; border: none;">
+            <div style="font-size: 48px; margin-bottom: 15px;">📊</div>
+            <h3 style="font-size: 18px; margin: 8px 0 4px 0; color: white; font-weight: 600;">项目管理</h3>
+            <p style="font-size: 12px; color: rgba(255,255,255,0.9); margin: 0;">Project Management</p>
           </div>
         </div>
-        
-        <!-- NCR管理按钮 -->
+              
+        <!-- NCR 管理按钮 -->
         <div class="button-card" style="text-align: center; transition: transform 0.3s ease;">
           <div @click="goToNcrManagement" 
                class="nav-button" 
-               style="background: linear-gradient(135deg, #67C23A 0%, #81c784 100%); color: white; padding: 30px; border-radius: 15px; cursor: pointer; box-shadow: 0 10px 20px rgba(103, 194, 58, 0.3); width: 220px; height: 220px; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.3s ease; border: none;">
-            <div style="font-size: 60px; margin-bottom: 20px;">📋</div>
-            <h3 style="font-size: 22px; margin: 10px 0 5px 0; color: white; font-weight: 600;">NCR管理</h3>
-            <p style="font-size: 14px; color: rgba(255,255,255,0.9); margin: 0;">NCR Management</p>
+               style="background: linear-gradient(135deg, #67C23A 0%, #81c784 100%); color: white; padding: 20px; border-radius: 15px; cursor: pointer; box-shadow: 0 10px 20px rgba(103, 194, 58, 0.3); width: 180px; height: 180px; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.3s ease; border: none;">
+            <div style="font-size: 48px; margin-bottom: 15px;">📋</div>
+            <h3 style="font-size: 18px; margin: 8px 0 4px 0; color: white; font-weight: 600;">NCR 管理</h3>
+            <p style="font-size: 12px; color: rgba(255,255,255,0.9); margin: 0;">NCR Management</p>
+          </div>
+        </div>
+      
+        <!-- 客户反馈按钮 -->
+        <div class="button-card" style="text-align: center; transition: transform 0.3s ease;">
+          <div @click.stop="goToCustomerFeedback" 
+               class="nav-button" 
+               style="background: linear-gradient(135deg, #E6A23C 0%, #f5c56a 100%); color: white; padding: 20px; border-radius: 15px; cursor: pointer; box-shadow: 0 10px 20px rgba(230, 162, 60, 0.3); width: 180px; height: 180px; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: all 0.3s ease; border: none;">
+            <div style="font-size: 48px; margin-bottom: 15px;">💬</div>
+            <h3 style="font-size: 18px; margin: 8px 0 4px 0; color: white; font-weight: 600;">客户反馈</h3>
+            <p style="font-size: 12px; color: rgba(255,255,255,0.9); margin: 0;">Customer Feedback</p>
           </div>
         </div>
       </div>
@@ -50,15 +61,28 @@ const goToProjectManagement = async () => {
   }
 }
 
-// 跳转到NCR管理页面
+// 跳转到 NCR 管理页面
 const goToNcrManagement = async () => {
   try {
     // 添加跳转提示
-    ElMessage.info('正在跳转到NCR管理界面...')
-    // 使用路由跳转到增强版NCR仪表盘
+    ElMessage.info('正在跳转到 NCR 管理界面...')
+    // 使用路由跳转到增强版 NCR 仪表盘
     await router.push('/ncr-enhanced')
   } catch (error) {
-    console.error('跳转到NCR管理页面失败:', error)
+    console.error('跳转到 NCR 管理页面失败:', error)
+    ElMessage.error('跳转失败，请稍后重试')
+  }
+}
+
+// 跳转到客户反馈页面
+const goToCustomerFeedback = async () => {
+  try {
+    // 添加跳转提示
+    ElMessage.info('正在跳转到客户反馈管理界面...')
+    // 使用路由跳转到客户反馈管理页面
+    await router.push('/customer-feedback')
+  } catch (error) {
+    console.error('跳转到客户反馈页面失败:', error)
     ElMessage.error('跳转失败，请稍后重试')
   }
 }

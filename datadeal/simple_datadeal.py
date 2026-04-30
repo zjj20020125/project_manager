@@ -175,6 +175,221 @@ def determine_task_status(planned_start, planned_end, actual_start, actual_end, 
     else:
         return "异常"
 
+def insert_customer_quality_to_db(excel_data, overwrite=False):
+    """将客户质量反馈信息导入到 customer_quality 表"""
+    if not excel_data:
+        return False, 0
+    
+    connection = connect_to_database()
+    if not connection:
+        return False, 0
+    
+    cursor = connection.cursor()
+    try:
+        # 检查是否已经有数据
+        check_sql = "SELECT COUNT(*) FROM customer_quality"
+        cursor.execute(check_sql)
+        existing_count = cursor.fetchone()[0]
+        
+        if existing_count > 0 and not overwrite:
+            print(f"customer_quality 表已有 {existing_count} 条数据，需要确认是否覆盖")
+            return False, existing_count
+        elif existing_count > 0 and overwrite:
+            # 如果需要覆盖，先清空现有数据
+            delete_sql = "DELETE FROM customer_quality"
+            cursor.execute(delete_sql)
+            connection.commit()
+            deleted_count = cursor.rowcount
+            print(f"已清空 customer_quality 表的 {deleted_count} 条旧数据")
+            existing_count = 0
+        
+        print(f"开始处理 {len(excel_data)} 行客户质量反馈数据")
+        
+        # 识别可能的列名 - 客户质量反馈专用
+        customer_name_cols = ['客户姓名', '客户名称', 'customer_name', 'client_name', 'customer', 'client', '联系人', 'contact_person']
+        contact_info_cols = ['联系方式', 'contact_info', 'contact', 'phone', 'telephone', 'email', '邮箱', '电话', '手机']
+        company_name_cols = ['公司名称', 'company_name', 'company', 'organization', '单位', '客户单位']
+        product_name_cols = ['产品名称', 'product_name', 'product', '产品型号', 'product_model', 'item', '物品']
+        project_name_cols = ['项目名称', 'project_name', 'project', '关联项目']
+        quality_issue_type_cols = ['质量问题类型', 'quality_issue_type', 'issue_type', 'problem_type', '问题类型', 'quality_type', '缺陷类型']
+        issue_description_cols = ['问题描述', 'issue_description', 'description', 'problem_description', 'issue', 'problem', '质量问题描述', '详细描述']
+        occurrence_date_cols = ['发生日期', 'occurrence_date', 'occur_date', 'happen_date', '问题发生时间', '发生时间']
+        discovery_date_cols = ['发现日期', 'discovery_date', 'found_date', 'detect_date', '问题发现时间', '发现时间']
+        severity_cols = ['严重程度', 'severity', 'level', 'grade', '严重等级', '优先级', 'priority_level']
+        priority_cols = ['优先级', 'priority', 'urgent_level', '紧急程度']
+        expected_solution_cols = ['期望解决方案', 'expected_solution', 'solution', 'requirement', '客户要求', '解决方案']
+        remarks_cols = ['备注', 'remarks', 'note', 'notes', '其他说明', '补充说明']
+        
+        inserted_count = 0
+        
+        for i, row in enumerate(excel_data):
+            customer_name = None
+            contact_info = None
+            company_name = None
+            product_name = None
+            project_name = None
+            quality_issue_type = None
+            issue_description = None
+            occurrence_date = None
+            discovery_date = None
+            severity = None
+            priority = None
+            expected_solution = None
+            remarks = None
+            
+            print(f"  处理第 {i+1} 行数据")
+            
+            # 遍历行中的每一列，查找匹配的字段
+            for col_name, col_value in row.items():
+                col_name_clean = col_name.strip().replace('\u3000', '').replace(' ', '')
+                col_name_lower = col_name_clean.lower()
+                
+                # 客户姓名匹配
+                if not customer_name and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in customer_name_cols]):
+                    customer_name = str(col_value) if col_value else None
+                    print(f"    找到客户姓名：{customer_name}")
+                
+                # 联系方式匹配
+                elif not contact_info and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in contact_info_cols]):
+                    contact_info = str(col_value) if col_value else None
+                    print(f"    找到联系方式：{contact_info}")
+                
+                # 公司名称匹配
+                elif not company_name and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in company_name_cols]):
+                    company_name = str(col_value) if col_value else None
+                    print(f"    找到公司名称：{company_name}")
+                
+                # 产品名称匹配
+                elif not product_name and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in product_name_cols]):
+                    product_name = str(col_value) if col_value else None
+                    print(f"    找到产品名称：{product_name}")
+                
+                # 项目名称匹配
+                elif not project_name and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in project_name_cols]):
+                    project_name = str(col_value) if col_value else None
+                    print(f"    找到项目名称：{project_name}")
+                
+                # 质量问题类型匹配
+                elif not quality_issue_type and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in quality_issue_type_cols]):
+                    quality_issue_type = str(col_value) if col_value else None
+                    print(f"    找到质量问题类型：{quality_issue_type}")
+                
+                # 问题描述匹配
+                elif not issue_description and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in issue_description_cols]):
+                    issue_description = str(col_value) if col_value else None
+                    print(f"    找到问题描述：{issue_description}")
+                
+                # 发生日期匹配
+                elif not occurrence_date and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in occurrence_date_cols]):
+                    occurrence_date = extract_date_from_cell(col_value)
+                    print(f"    找到发生日期：{occurrence_date}")
+                
+                # 发现日期匹配
+                elif not discovery_date and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in discovery_date_cols]):
+                    discovery_date = extract_date_from_cell(col_value)
+                    print(f"    找到发现日期：{discovery_date}")
+                
+                # 严重程度匹配
+                elif not severity and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in severity_cols]):
+                    severity = str(col_value) if col_value else '一般'
+                    print(f"    找到严重程度：{severity}")
+                
+                # 优先级匹配
+                elif not priority and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in priority_cols]):
+                    priority = str(col_value) if col_value else '中'
+                    print(f"    找到优先级：{priority}")
+                
+                # 期望解决方案匹配
+                elif not expected_solution and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in expected_solution_cols]):
+                    expected_solution = str(col_value) if col_value else None
+                    print(f"    找到期望解决方案：{expected_solution}")
+                
+                # 备注匹配
+                elif not remarks and any(keyword.replace('\u3000', '').replace(' ', '').lower() in col_name_lower for keyword in [c.replace('\u3000', '').replace(' ', '') for c in remarks_cols]):
+                    remarks = str(col_value) if col_value else None
+                    print(f"    找到备注：{remarks}")
+            
+            # 只有当至少有客户姓名和问题描述时才插入记录
+            if customer_name and customer_name.strip() != '' and issue_description and issue_description.strip() != '':
+                print(f"    准备插入客户质量反馈：{customer_name} - {issue_description[:50]}...")
+                
+                # 映射严重程度和优先级的值
+                if severity:
+                    severity_mapping = {
+                        '严重': '严重',
+                        '高': '严重',
+                        'critical': '严重',
+                        'major': '严重',
+                        '一般': '一般',
+                        '中': '一般',
+                        'medium': '一般',
+                        'minor': '一般',
+                        '低': '轻微',
+                        '轻微': '轻微',
+                        'low': '轻微'
+                    }
+                    severity = severity_mapping.get(severity, '一般')
+                
+                if priority:
+                    priority_mapping = {
+                        '高': '高',
+                        'high': '高',
+                        'urgent': '高',
+                        '中': '中',
+                        'medium': '中',
+                        'normal': '中',
+                        '低': '低',
+                        'low': '低'
+                    }
+                    priority = priority_mapping.get(priority, '中')
+                
+                # 映射质量问题类型的值
+                if quality_issue_type:
+                    issue_type_mapping = {
+                        '质量投诉': '质量投诉',
+                        '投诉': '质量投诉',
+                        '技术建议': '技术建议',
+                        '建议': '技术建议',
+                        '售后服务': '售后服务',
+                        '售后': '售后服务',
+                        '其他': '其他'
+                    }
+                    quality_issue_type = issue_type_mapping.get(quality_issue_type, '其他')
+                
+                # 插入到 customer_quality 表
+                insert_sql = """
+                INSERT INTO customer_quality (
+                    customer_name, contact_info, company_name, product_name, project_name,
+                    quality_issue_type, issue_description, occurrence_date, discovery_date,
+                    severity, priority, expected_solution, remarks
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                
+                try:
+                    cursor.execute(insert_sql, (
+                        customer_name, contact_info, company_name, product_name, project_name,
+                        quality_issue_type or '其他', issue_description, occurrence_date, discovery_date,
+                        severity or '一般', priority or '中', expected_solution, remarks
+                    ))
+                    inserted_count += 1
+                    print(f"    成功插入客户质量反馈：{customer_name}")
+                except mysql.connector.Error as e:
+                    print(f"    插入客户质量反馈时出错：{e}")
+        
+        connection.commit()
+        if inserted_count > 0:
+            print(f"成功插入 {inserted_count} 条客户质量反馈到 customer_quality 表")
+        else:
+            print("没有找到有效的客户质量反馈数据或插入失败")
+        return True, inserted_count
+    except mysql.connector.Error as e:
+        print(f"插入客户质量反馈数据时出错：{e}")
+        return False, 0
+    finally:
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+
 def insert_tasks_to_db(project_id, project_name, manager_name, excel_data, overwrite=False):
     """将任务信息插入到project_tasks表"""
     if not excel_data:
@@ -924,12 +1139,46 @@ def main():
         print("在当前目录下未找到任何Excel文件")
         return
     
-    print(f"找到 {len(excel_files)} 个Excel文件:")
+    print(f"找到 {len(excel_files)} 个 Excel 文件:")
     for f in excel_files:
         print(f"  - {f}")
     print("-" * 60)
-    
-    # 存储所有文件的数据
+        
+    # 询问用户要导入的数据类型
+    print("\n请选择要导入的数据类型:")
+    print("1. 项目任务数据 (导入到 projects 和 project_tasks 表)")
+    print("2. 客户质量反馈数据 (导入到 customer_quality 表)")
+    choice = input("请输入选项 (1/2): ").strip()
+        
+    if choice == '2':
+        # 导入客户质量反馈数据
+        print("\n=== 导入客户质量反馈数据 ===")
+            
+        for file_path in excel_files:
+            filename = os.path.basename(file_path)
+            print(f"\n处理表格：{filename}")
+                
+            # 读取文件数据
+            file_data = read_excel_data(file_path)
+                
+            if not file_data:
+                print(f"  警告：无法读取文件 {file_path} 的数据")
+                continue
+                
+            # 将客户质量反馈信息导入到 customer_quality 表
+            success, count = insert_customer_quality_to_db(file_data, overwrite=False)
+                
+            if success:
+                print(f"  ✓ 成功导入 {count} 条客户质量反馈数据")
+            else:
+                print(f"  ✗ 导入失败")
+                
+            print("-" * 60)
+            
+        print(f"\n客户质量反馈数据导入完成!")
+        return
+        
+    # 默认导入项目任务数据
     all_files_data = []
     
     for file_path in excel_files:
