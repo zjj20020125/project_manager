@@ -328,13 +328,13 @@ export const projectApi = {
   // 获取 SSCX 字段近一年统计数据（前 15 名）
   getSscxYearlyStats: () => apiClient.get('/v1/ncr/sscx-yearly-stats'),
     
-  // 获取问题导向三层级统计（wtdx -> wtfl -> wtflxf）
+  // 获取问题导向三层级统计（wtdx -> wtfl -> wtflxfn）
  getNcrProblemHierarchyStats: () => apiClient.get('/v1/ncr/problem-hierarchy-stats'),
   
   // 获取 NCR 统计趋势数据
   getNcrStatsTrend: () => apiClient.get('/v1/ncr/stats-trend'),
   
-  // 获取问题层级详情列表（根据 wtdx/wtfl/wtflxf筛选）
+  // 获取问题层级详情列表（根据 wtdx/wtfl/wtflxfn筛选）
  getNcrByProblemHierarchy: (params) => apiClient.get('/v1/ncr/problem-hierarchy-detail', { params }),
   
   // 导入项目数据

@@ -117,7 +117,7 @@ export default {
     
     // 响应式数据
    const hierarchyName = ref('');  // 层级名称（如：设计问题）
-   const level = ref('');          // 层级类型（wtdx/wtfl/wtflxf）
+   const level = ref('');          // 层级类型（wtdx/wtfl/wtflxfn）
    const count = ref(0);           // 数量
    const ncrList = ref([]);        // NCR 列表
    const totalCount = ref(0);      // 总数
@@ -130,14 +130,14 @@ export default {
    const levelTextMap = {
       'wtdx': '问题导向',
       'wtfl': '问题分类',
-      'wtflxf': '问题细分'
+      'wtflxfn': '问题细分'
     };
     
     // 层级标题映射
    const levelTitleMap = {
       'wtdx': '问题导向详情',
       'wtfl': '问题分类详情',
-      'wtflxf': '问题细分详情'
+      'wtflxfn': '问题细分详情'
     };
     
     // 计算属性
@@ -165,7 +165,7 @@ export default {
         // 问题相关字段（优先显示）
         'wtdx': { prop: 'wtdx', label: '问题导向', width: 140, showOverflowTooltip: true },
         'wtfl': { prop: 'wtfl', label: '问题分类', width: 140, showOverflowTooltip: true },
-        'wtflxf': { prop: 'wtflxf', label: '问题细分', width: 140, showOverflowTooltip: true },
+        'wtflxfn': { prop: 'wtflxfn', label: '问题细分', width: 140, showOverflowTooltip: true },
         'problem_category': { prop: 'problem_category', label: '问题类别', width: 140, showOverflowTooltip: true },
         
         // 状态和优先级

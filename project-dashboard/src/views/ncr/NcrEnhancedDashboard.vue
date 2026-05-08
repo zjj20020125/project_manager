@@ -1069,7 +1069,7 @@ export default {
       priorityLiquidChart = echarts.init(prioritySunburstRef.value);
           
       // 直接使用问题导向三层级统计数据
-      // 数据结构：第一层 wtdx（问题导向），第二层 wtfl（问题分类），第三层 wtflxf（问题分类细分）
+      // 数据结构：第一层 wtdx（问题导向），第二层 wtfl（问题分类），第三层 wtflxfn（问题分类细分）
       const option = {
         tooltip: {
           trigger: 'item',
@@ -1129,8 +1129,8 @@ export default {
               level = 'wtfl';
               levelText = '问题分类';
             } else if (pathLength === 4) {
-              // 第三层：问题分类细分 (wtflxf)
-              level = 'wtflxf';
+              // 第三层：问题分类细分 (wtflxfn)
+              level = 'wtflxfn';
               levelText = '问题分类细分';
             }
           }

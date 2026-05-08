@@ -28,6 +28,7 @@ from main.routers.chart_router import router as chart_router
 from main.routers.project_router import router as project_detail_router
 from main.routers.data_router import router as data_router
 from main.routers.feedback_router import router as feedback_router
+from main.routers.ncr_router import router as ncr_enhanced_router  # NCR增强功能路由
 
 # 导入定时刷新任务状态
 from main.task_status_refresher import start_auto_refresh, stop_auto_refresh, get_refresher_instance
@@ -67,6 +68,7 @@ app.include_router(feedback_router)  # 客户反馈管理路由
 # 注意：chart_router 和 ncr_router 放在最后，避免路由冲突
 app.include_router(chart_router)
 app.include_router(ncr_router)
+app.include_router(ncr_enhanced_router)  # NCR增强功能路由（问题导向统计等）
 
 # 健康检查端点
 @app.get("/")

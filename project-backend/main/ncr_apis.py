@@ -1313,7 +1313,7 @@ def get_sscx_yearly_statistics():
 # 26. 根据问题层级获取NCR列表(用于旭日图点击跳转)
 @router.get("/ncr/problem-hierarchy-detail", response_model=dict)
 async def get_ncr_by_problem_hierarchy(
-    level: str,  # wtdx/wtfl/wtflxf
+    level: str,  # wtdx/wtfl/wtflxfn
     name: str,   # 层级名称
     status: Optional[str] = None,
     priority: Optional[str] = None,
@@ -1322,7 +1322,7 @@ async def get_ncr_by_problem_hierarchy(
 ):
     """
     根据问题层级获取NCR列表
-    - level: 层级类型 (wtdx=问题导向, wtfl=问题分类, wtflxf=问题分类细分)
+    - level: 层级类型 (wtdx=问题导向, wtfl=问题分类, wtflxfn=问题分类细分)
     - name: 层级名称 (如: 设计问题、尺寸偏差等)
     """
     try:
@@ -1353,7 +1353,7 @@ async def get_ncr_by_problem_hierarchy(
         field_map = {
             'wtdx': 'wtdx',      # 问题导向
             'wtfl': 'wtfl',      # 问题分类
-            'wtflxf': 'wtflxf'   # 问题分类细分
+            'wtflxfn': 'wtflxfn'   # 问题分类细分
         }
         
         query_field = field_map.get(level)

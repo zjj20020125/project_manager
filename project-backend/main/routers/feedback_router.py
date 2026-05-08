@@ -843,12 +843,10 @@ async def get_problem_list(
             occurrence_unit,
             vehicle_model,
             other1 as production_repair_type,
-            problem_category,
             problem_category_1,
             supplement_category_2,
             product_category as product_type,
-            month,
-            week_number as week
+            month
         FROM customer_quality
         {where_sql}
         ORDER BY occurrence_date DESC

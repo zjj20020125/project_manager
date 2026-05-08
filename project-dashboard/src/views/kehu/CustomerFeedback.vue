@@ -430,32 +430,6 @@
         </el-row>
 
         <!-- 详细表格区 -->
-        <el-card shadow="hover" style="margin-bottom: 20px;">
-          <template #header>
-            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-size: 16px; font-weight: bold;">质量问题明细</span>
-              <div style="display: flex; gap: 10px; align-items: center;">
-                <el-input
-                  v-model="searchKeyword"
-                  placeholder="搜索产品名称、问题描述、责任班组..."
-                  clearable
-                  @change="handleSearch"
-                  @clear="handleSearch"
-                  prefix-icon="Search"
-                  style="width: 300px;"
-                />
-                <el-button 
-                  type="danger" 
-                  @click="handleBatchDelete" 
-                  icon="Delete" 
-                  size="default"
-                  :disabled="selectedRows.length === 0"
-                >
-                  批量删除 ({{ selectedRows.length }})
-                </el-button>
-              </div>
-            </div>
-          </template>
 
 
           <el-table
@@ -554,7 +528,6 @@
               @current-change="handlePageChange"
             />
           </div>
-        </el-card>
       </div>
     </el-main>
 
@@ -918,6 +891,12 @@
         </p>
       </el-alert>
 
+      <!-- 覆盖选项 -->
+      <el-checkbox v-model="overwriteExisting" style="margin-bottom: 20px;">
+        <span style="font-weight: bold; color: #f56c6c;">清除已有数据后导入</span>
+        <span style="color: #909399; font-size: 12px; margin-left: 10px;">（勾选后将删除所有现有数据，再导入新数据）</span>
+      </el-checkbox>
+
       <el-upload
         ref="uploadRef"
         drag
@@ -1054,6 +1033,7 @@ const currentFeedback = ref({});
 const importDialogVisible = ref(false);
 const importLoading = ref(false);
 const importFile = ref(null);
+const overwriteExisting = ref(false);  // 是否覆盖已有数据
 
 // 新增问题对话框相关
 const addDialogVisible = ref(false);
@@ -1248,9 +1228,9 @@ const handleImport = async () => {
     // 使用 raw File 对象而不是 UploadFile 组件的 file
     const rawFile = importFile.value.raw || importFile.value;
     formData.append('file', rawFile);
-    formData.append('overwrite', 'false');
+    formData.append('overwrite', overwriteExisting.value ? 'true' : 'false');
 
-    console.log('开始上传文件:', fileName, '大小:', rawFile.size);
+    console.log('开始上传文件:', fileName, '大小:', rawFile.size, '覆盖模式:', overwriteExisting.value);
 
     // 调用后端导入 API(通过 Vite 代理)
     const response = await fetch('/api/v1/feedback/import-quality', {
@@ -1272,6 +1252,8 @@ const handleImport = async () => {
     if (result.success) {
       ElMessage.success(`导入成功!共导入 ${result.imported_count || 0} 条数据`);
       importDialogVisible.value = false;
+      // 重置覆盖选项
+      overwriteExisting.value = false;
       // 刷新所有数据
       Promise.all([
         fetchFilterOptions(),

@@ -76,7 +76,7 @@ def read_excel_data(file_path=None):
             print(f"  {i+1}. '{col}'")
         print(f"数据行数：{len(df)}")
         
-        # 特别检查"新责任班组"列
+        # 特别检查“新责任班组”列
         if '新责任班组' in df.columns:
             team_col = df['新责任班组']
             non_empty_count = team_col.notna().sum()
@@ -88,6 +88,31 @@ def read_excel_data(file_path=None):
                 print(f"  前 5 个非空值：{team_col[team_col.notna()].head(5).tolist()}")
         else:
             print(f"\n⚠️  未找到【新责任班组】列")
+                
+        # 特别检查“问题分类 1”和“补充分类 2”列
+        if '问题分类 1' in df.columns:
+            cat1_col = df['问题分类 1']
+            non_empty = cat1_col.notna().sum()
+            empty = (~cat1_col.notna()).sum()
+            print(f"\n【问题分类 1】列统计:")
+            print(f"  非空值：{non_empty}条")
+            print(f"  空值：{empty}条")
+            if non_empty > 0:
+                print(f"  前 5 个非空值：{cat1_col[cat1_col.notna()].head(5).tolist()}")
+        else:
+            print(f"\n⚠️  未找到【问题分类 1】列")
+                
+        if '补充分类 2' in df.columns:
+            cat2_col = df['补充分类 2']
+            non_empty = cat2_col.notna().sum()
+            empty = (~cat2_col.notna()).sum()
+            print(f"\n【补充分类 2】列统计:")
+            print(f"  非空值：{non_empty}条")
+            print(f"  空值：{empty}条")
+            if non_empty > 0:
+                print(f"  前 5 个非空值：{cat2_col[cat2_col.notna()].head(5).tolist()}")
+        else:
+            print(f"\n⚠️  未找到【补充分类 2】列")
         
         print(f"==========================\n")
 
@@ -152,6 +177,22 @@ def read_excel_data(file_path=None):
         for col_name in column_mapping.values():
             if col_name not in df.columns:
                 df[col_name] = ""
+        
+        # 特殊处理：如果 problem_category_1 或 supplement_category_2 为空，从 problem_category 复制
+        if 'problem_category' in df.columns:
+            # 如果 problem_category_1 列为空（全为空字符串），使用 problem_category 的值
+            if 'problem_category_1' in df.columns:
+                mask_cat1 = (df['problem_category_1'].isna()) | (df['problem_category_1'] == '')
+                if mask_cat1.any():
+                    df.loc[mask_cat1, 'problem_category_1'] = df.loc[mask_cat1, 'problem_category']
+                    print(f"\n✅ 已将 {mask_cat1.sum()} 条空的 problem_category_1 从 problem_category 复制")
+            
+            # 如果 supplement_category_2 列为空（全为空字符串），使用 problem_category 的值
+            if 'supplement_category_2' in df.columns:
+                mask_cat2 = (df['supplement_category_2'].isna()) | (df['supplement_category_2'] == '')
+                if mask_cat2.any():
+                    df.loc[mask_cat2, 'supplement_category_2'] = df.loc[mask_cat2, 'problem_category']
+                    print(f"✅ 已将 {mask_cat2.sum()} 条空的 supplement_category_2 从 problem_category 复制")
         
         # 3. 数据预处理
         # 3.1 日期列转换（处理 Excel 日期格式）- 使用 ORM 字段名而不是 Excel 列名

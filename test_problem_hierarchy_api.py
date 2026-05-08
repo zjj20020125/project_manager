@@ -38,7 +38,7 @@ def test_problem_hierarchy_api():
     print(f"\n📋 表中共有 {len(column_names)} 个字段")
     
     # 检查关键字段
-    key_fields = ['wtdx', 'wtfl', 'wtflxf']
+    key_fields = ['wtdx', 'wtfl', 'wtflxfn']
     print("\n🔍 检查关键字段:")
     for field in key_fields:
         exists = field in column_names

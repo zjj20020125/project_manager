@@ -443,14 +443,14 @@ def get_unreviewed_responsibility_stats():
         traceback.print_exc()
         return []
 
-# 新增：获取问题导向三层级统计（wtdx -> wtfl -> wtflxf）
+# 新增：获取问题导向三层级统计（wtdx -> wtfl -> wtflxfn）
 @router.get("/ncr/problem-hierarchy-stats", response_model=List[dict])
 def get_ncr_problem_hierarchy_stats():
     """
     获取问题导向三层级统计数据
     第一层：wtdx（问题导向）- 每个元素的数量
     第二层：wtfl（问题分类）- 在每个 wtdx 下的分类数量
-    第三层：wtflxf（问题分类细分）- 在每个 wtfl 下的细分数量
+    第三层：wtflxfn（问题分类细分）- 在每个 wtfl 下的细分数量
     
     返回格式：
     [
@@ -503,13 +503,16 @@ def get_ncr_problem_hierarchy_stats():
         
         column_names = [col['Field'] for col in columns_result if 'Field' in col]
         
-        # 检查是否有 wtdx、wtfl、wtflxf 字段
-        required_fields = ['wtdx', 'wtfl', 'wtflxf']
-        missing_fields = [field for field in required_fields if field not in column_names]
+        # 检查是否有 wtdx、wtfl、wtflxfn 字段
+        required_fields = ['wtdx', 'wtfl']
+        optional_fields = ['wtflxfn']
+        missing_required = [field for field in required_fields if field not in column_names]
         
-        if missing_fields:
-            print(f"警告：缺少必要字段：{', '.join(missing_fields)}")
+        if missing_required:
+            print(f"警告：缺少必要字段：{', '.join(missing_required)}")
             return []
+        
+        has_wtflxfn = 'wtflxfn' in column_names
         
         # 第一步：统计 wtdx（问题导向）的分布
         wtdx_sql = f"""
@@ -548,38 +551,40 @@ def get_ncr_problem_hierarchy_stats():
             
             wtfl_results = execute_query(wtfl_sql, (wtdx_name,), fetch_all=True) or []
             
-            # 第三步：对每个 wtfl，统计其下的 wtflxf 分布
-            wtfl_children = []
+            # 第三步：对每个 wtfl，统计其下的 wtflxfn 分布（如果字段存在）
+            wtflxfn_children = []
             for wtfl_record in wtfl_results:
                 wtfl_name = wtfl_record.get('wtfl', '未知分类')
                 wtfl_count = wtfl_record.get('count', 0)
                 
-                # 查询该 wtfl 下的 wtflxf 分布
-                wtflxf_sql = f"""
-                SELECT 
-                    COALESCE(NULLIF(TRIM(wtflxf), ''), '未知细分') as wtflxf,
-                    COUNT(*) as count
-                FROM {table_name}
-                WHERE wtdx = %s AND wtfl = %s AND wtflxf IS NOT NULL AND TRIM(wtflxf) != ''
-                GROUP BY wtflxf
-                ORDER BY count DESC
-                """
+                wtflxfn_children = []
                 
-                wtflxf_results = execute_query(wtflxf_sql, (wtdx_name, wtfl_name), fetch_all=True) or []
-                
-                # 构建 wtflxf 层级
-                wtflxf_children = []
-                for wtflxf_record in wtflxf_results:
-                    wtflxf_children.append({
-                        "name": wtflxf_record.get('wtflxf', '未知细分'),
-                        "value": wtflxf_record.get('count', 0)
-                    })
+                if has_wtflxfn:
+                    # 查询该 wtfl 下的 wtflxfn 分布
+                    wtflxfn_sql = f"""
+                    SELECT 
+                        COALESCE(NULLIF(TRIM(wtflxfn), ''), '未知细分') as wtflxfn,
+                        COUNT(*) as count
+                    FROM {table_name}
+                    WHERE wtdx = %s AND wtfl = %s AND wtflxfn IS NOT NULL AND TRIM(wtflxfn) != ''
+                    GROUP BY wtflxfn
+                    ORDER BY count DESC
+                    """
+                    
+                    wtflxfn_results = execute_query(wtflxfn_sql, (wtdx_name, wtfl_name), fetch_all=True) or []
+                    
+                    # 构建 wtflxfn 层级
+                    for wtflxfn_record in wtflxfn_results:
+                        wtflxfn_children.append({
+                            "name": wtflxfn_record.get('wtflxfn', '未知细分'),
+                            "value": wtflxfn_record.get('count', 0)
+                        })
                 
                 # 构建 wtfl 层级
                 wtfl_children.append({
                     "name": wtfl_name,
                     "value": wtfl_count,
-                    "children": wtflxf_children
+                    "children": wtflxfn_children
                 })
             
             # 构建 wtdx 层级
